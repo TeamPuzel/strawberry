@@ -1,4 +1,4 @@
-# The Strawberry Programming Language
+# The Strawberry Programming Language 🍓
 
 This is the specification and C99 reference implementation of the Strawberry Programming Language
 toolchain, including the inherently needed interpreter and backends for lowering the language to various targets.

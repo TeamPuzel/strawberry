@@ -1,0 +1,14 @@
+id = "strawberry"
+name = "Strawberry"
+description = "Strawberry Programming Language support."
+version = "0.1.0"
+schema_version = 1
+authors = ["Lua <https://github.com/TeamPuzel>"]
+repository = "https://github.com/TeamPuzel/strawberry-zed"
+
+[language_servers.strd]
+name = "strd"
+language = "Strawberry"
+
+# [grammars.strawberry]
+# repository = "https://github.com/TeamPuzel/tree-sitter-strawberry"

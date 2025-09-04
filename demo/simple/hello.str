@@ -1,0 +1,6 @@
+configure core.desktop.config
+use core.debug.print
+
+fun main() {
+    print("Hello, world!")
+}

@@ -1,0 +1,10 @@
+cmake_minimum_required(VERSION 3.21)
+project(strawberry C)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+
+file(GLOB_RECURSE STRC_SOURCES CONFIGURE_DEPENDS src/*.c)
+file(GLOB_RECURSE STRC_HEADERS CONFIGURE_DEPENDS src/*.h)
+
+add_executable(strawberry ${STRC_SOURCES} ${STRC_HEADERS})

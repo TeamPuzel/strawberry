@@ -1,0 +1,49 @@
+module core
+// The primitives of the strawberry core library are declared much like any other type
+// but they forward to the compiler for a lot of the implementation, some for efficiency reasons
+// and some which are introducing truly fundamental concepts such as literals.
+//
+// TODO:
+// - Consider sugar or target based aliases for the primitives. Is it even a good idea?
+// -- Int<32> and UInt<32> would be i32 and u32 respectively (including all other, arbitrary sizes of course)
+// -- Fixed<32, 16> would be something like d32.16
+// -- The empty tuple () would be Void
+
+/// A special type which can never be constructed and therefore marks something as impossible to exist.
+type Never = builtin.Never
+
+/// A literal type representing unprocessed arbitrary precision integers like ones formed from a literal.
+type Integer = builtin.Integer
+
+/// A literal type representing unprocessed arbitrary precision decimals like ones formed from a literal.
+type Decimal = builtin.Decimal
+
+/// A primitive type representing an unsigned integer of a specified bit size.
+/// The layout is conventional for the platform byte order.
+/// The default size is not the pointer size but the conventional integer size for the target.
+type UInt<const SIZE: Integer = builtin.default_int_size()> = builtin.UInt<SIZE>
+
+/// A primitive type representing a signed two's complement integer of a specified bit size.
+/// The layout is conventional for the platform byte order.
+/// The default size is not the pointer size but the conventional integer size for the target.
+///
+/// If a different signedness representation is desired it should be implemented as a separate type.
+type Int<const SIZE: Integer = builtin.default_int_size()> = builtin.Int<SIZE>
+
+/// The conventional pointer sized unsigned integer for the target.
+type USize = UInt<builtin.default_ptr_size()>
+
+/// The conventional pointer sized signed integer for the target.
+type ISize = Int<builtin.default_ptr_size()>
+
+/// A primitive type representing a fixed point decimal type, and the default type for decimals.
+///
+/// In the Strawberry Programming Language fixed point is preferred over floating point as one of
+/// the primary goals of the language is simplicity and portability. Fixed point is just a slightly
+/// different interpretation of normal integer arithmetic so it still works even on exotic or old hardware.
+/// The language must be abstract enough to lower most code even to 8 bit computers.
+///
+/// The default sizing is derived from the default integer size for the platform and split in half.
+struct Fixed<const SIZE: Integer = builtin.default_int_size(), const DECIMAL: Integer = SIZE / 2> {
+
+}

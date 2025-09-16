@@ -3,4 +3,14 @@
 #ifndef AST_H
 #define AST_H
 
+typedef enum DeclTag : int {
+    Decl_Struct,
+    Decl_Enum,
+    Decl_Fun,
+} DeclTag;
+
+typedef struct Decl {
+    DeclTag tag;
+} Decl;
+
 #endif

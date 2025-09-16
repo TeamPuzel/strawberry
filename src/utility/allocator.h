@@ -41,6 +41,7 @@ static inline void c_alloc_free(void * self, void * ptr) {
 static inline Allocator c_alloc() {
     return (Allocator) {
         .alloc = c_alloc_alloc,
+        .realloc = c_alloc_realloc,
         .free = c_alloc_free
     };
 }

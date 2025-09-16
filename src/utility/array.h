@@ -1,7 +1,7 @@
 #ifndef ARRAY_H
 #define ARRAY_H
 #include <stddef.h>
-#include "allocator.h" // IWYU pragma: keep // This is needed indirectly by the array definition macro.
+#include "allocator.h"
 
 #define DEFINE_ARRAY(T)                                                                                                \
 typedef struct T##Array {                                                                                              \

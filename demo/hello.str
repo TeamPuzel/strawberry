@@ -1,4 +1,4 @@
-configure core.desktop.config
+configure core.modern.config
 use core.debug.print
 
 fun main() {

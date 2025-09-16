@@ -1,7 +1,26 @@
 # The Strawberry Programming Language 🍓
 
+Strawberry is a meta programming language focused on extreme generic programming without using any runtime primitives.
+It is purely an expression of logic which can implement these primitives in itself often by communicating with
+a lowering backend directly, with most code being written in terms of semantics alone.
+
 This is the specification and C99 reference implementation of the Strawberry Programming Language
-toolchain, including the inherently needed interpreter and backends for lowering the language to various targets.
+toolchain, including the inherently required interpreter and backends for lowering the language to various targets.
+
+## License
+
+There is no license currently as I still have to find one I like best. The general spirit of the license will be
+- No use of the source for training AI.
+- Do whatever you want where object distribution does not need to include the license, only source distribution does.
+
+## Contribution
+
+This project does not accept any contribution due to the annoying to keep track of copyright nonsense.
+
+## Compatibility
+
+Please do not call an incompatible implementation with the same or similar name that would imply it is
+an implementation of the language. I would like for anyone using the language to be sure that a toolchain is conformant.
 
 ## Why yet another language?
 
@@ -32,8 +51,6 @@ The main motivation for starting this project was trying to get any of my favori
 a game for the PS2 and finding that it's actually impossible without years of work. At that point, I'd rather spend
 these years working on a simpler, even if less efficient, solution to these problems.
 
----
-
 That being said, Strawberry for any normal user should be about as simple and nice to use as Swift.
 It is also cleaned up syntactically compared to something like Rust, with much prettier and more redable code.
 
@@ -56,7 +73,7 @@ to work at least in some capacity on ancient platforms, which should make portin
 
 Programming should be fun and the programmer should be able to do whatever they want. Straberry will not avoid abilities
 inherent to its expremely flexible semantics even when that means one could write terrible code. That is not for
-the language to decide. There is nothing I hate more than design by subjective opinion as an argument.
+the language to decide. There is nothing I hate more than design by subjective opinion.
 
 ### And more
 

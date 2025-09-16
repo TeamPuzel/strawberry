@@ -2,10 +2,10 @@
 // Copyright (c) 2025 All rights reserved.
 #ifndef PRIMITIVE_H
 #define PRIMITIVE_H
-#include <stdlib.h>  // IWYU pragma: export
-#include <stddef.h>  // IWYU pragma: export
-#include <stdint.h>  // IWYU pragma: export
-#include <stdbool.h> // IWYU pragma: export
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 typedef int8_t i8;
 typedef int16_t i16;

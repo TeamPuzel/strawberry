@@ -2,8 +2,8 @@
 // Copyright (c) 2025 All rights reserved.
 #include "utility/primitive.h"
 #include "parse/token.h"
+#include "parse/ast.h"
 #include "utility/allocator.h"
-#include "stdio.h"
 #include <stdio.h>
 // This is the reference unix interface of the strawberry compiler when used as an executable.
 
@@ -12,6 +12,11 @@
 // IO layer ------------------------------------------------------------------------------------------------------------
 // IO will go through this layer to have one place to change when porting the code, since some
 // platforms still have these concepts just with a different API and it would be silly to rewrite all of it for them.
+
+void panic(const char * reason) {
+    fprintf(stderr, "panic: %s", reason);
+    exit(ERROR_CODE_PANIC);
+}
 
 // This is aliased because we will eventually need some conditional compilation to support unconventional hosts.
 typedef FILE * File;
@@ -73,10 +78,6 @@ void print_token(File file, Token token) {
             fprintf(file, "LeftBracket\n"); break;
         case Token_RightBracket:
             fprintf(file, "RightBracket\n"); break;
-        case Token_LeftAngle:
-            fprintf(file, "LeftAngle\n"); break;
-        case Token_RightAngle:
-            fprintf(file, "RightAngle\n"); break;
         case Token_Comma:
             fprintf(file, "Comma\n"); break;
         case Token_Dot:
@@ -102,10 +103,50 @@ void print_token(File file, Token token) {
     }
 }
 
+void print_ast(File file, Ast ast) {
+
+}
+
+// Token stream --------------------------------------------------------------------------------------------------------
+
+// A simple token stream which holds an entire source unit in memory.
+typedef struct InMemoryTokenStream {
+    TokenStream interface;
+    Source source;
+    const char * cursor;
+} InMemoryTokenStream;
+
+TokenWithProvenance in_memory_token_stream_next(void * _self) {
+    InMemoryTokenStream * self = _self;
+    Token token = tokenize(&self->cursor, self->source.end);
+    return (TokenWithProvenance) {
+        .token = token,
+        .source_id = "todo",
+        .source_offset = 0,
+        .source_count = 0
+    };
+}
+
+InMemoryTokenStream in_memory_token_stream(Source source) {
+    return (InMemoryTokenStream) {
+        .interface = {
+            .next = in_memory_token_stream_next
+        },
+        .source = source,
+        .cursor = source.start
+    };
+}
+
 // Command interface ---------------------------------------------------------------------------------------------------
 // Constants and arguments are defined here
 
 #define VERSION_STRING "0.0.1 untagged reference"
+
+typedef enum OptimizationMode : u8 {
+    OptimizationMode_None,
+    OptimizationMode_Size,
+    OptimizationMode_Fast
+} OptimizationMode;
 
 // Arguments are stored globally here.
 static struct Args {
@@ -113,15 +154,17 @@ static struct Args {
 
     const char * source_path;
     const char * output_path;
+    OptimizationMode optimization_mode;
 } args = {
     .source_path = "main.str",
-    .output_path = "out"
+    .output_path = "out",
+    .optimization_mode = OptimizationMode_None
 };
 
 typedef struct Args Args;
 
 // Writes the usage guide to standard output.
-void print_help() {
+void print_help(void) {
     // TODO(?, optimization): Keep these snippets of text interface as one big string in the binary
     // and write by slicing from it, to avoid duplication of strings.
     fprintf(stdout,
@@ -144,7 +187,7 @@ void print_help() {
         "  commands          Output a list of currently available custom commands\n"
         "  [custom]          Any other commands declared by the build file if present\n\n"
 
-        "Advanced commands:\n"
+        "Debug commands:\n"
         "  tokenize          Output the tokens\n"
         "  parse             Output the parsed tree\n"
         "  ir                Output the strawberry intermediate representation, SIR\n"
@@ -192,7 +235,16 @@ int main(int argc, char ** argv) {
 
             Allocator_free(&alloc, source.start);
         } else if (string_eq(args.command, "parse")) {
+            File entry = open_source_file(args.source_path);
+            Source source = read_source_file_to_end(&alloc, entry);
+            close_source_file(entry);
 
+            InMemoryTokenStream stream = in_memory_token_stream(source);
+            Ast ast = parse_syntax_tree(&alloc, (TokenStream *) &stream);
+
+            print_ast(stdout, ast);
+
+            Allocator_free(&alloc, source.start);
         } else if (string_eq(args.command, "ir")) {
 
         }

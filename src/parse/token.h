@@ -3,12 +3,14 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 #include "../utility/primitive.h"
+// The process of selecting tokens of the Strawberry Programming Language is very simple and pure.
+// This header and its associated implementation are complete and unlikely to require much more work.
 
 // The enumeration of all token types for tagging a union of their associated data.
-// All tokens are defined very elegantly except for the opening angle bracket as technically it's a
-// contextual use of the same token otherwise allowed as an operator.
+// All tokens are defined very elegantly and notably they do not include the angled brackets used for generics as they
+// are not possible to express in a simple and pure tokenization procedure.
 typedef enum TokenTag : i16 {
-    // A special tag indicating that an error occured during
+    // A special tag indicating that an error occured during the lexing stage.
     Token_Error = -1,
     // A special tag indicating that there is nothing left to tokenize.
     Token_EndOfSource,
@@ -35,16 +37,6 @@ typedef enum TokenTag : i16 {
     Token_LeftBracket,
     // A right square bracket.
     Token_RightBracket,
-    // A left angle bracket.
-    // This is resolved uniquely. A leading angle bracket directly after another construct
-    // For this reason sequences of the left angle bracket are reserved in suffix operator context.
-    // A solution to make this cleaner would be to use square brackets for generics like some newer languages
-    // but the issue with that is that you'd want types to be able to provide subscripts statically. I see no
-    // reason clean code would use suffix brackets like that anyway so for consistency and avoidance of ambiguity
-    // all types of brackets are disallowed in suffix and prefix operators, and only allowed in
-    Token_LeftAngle,
-    // A right angle bracket.
-    Token_RightAngle,
     // A comma of any kind.
     Token_Comma,
     // A dot of any kind.
@@ -75,12 +67,12 @@ typedef enum TokenTag : i16 {
     // A character is a source span between two single quotes. It can be many characters in the source
     // and it is up to the concrete type we lower into to validate it correctly.
     Token_Character,
-    // A number of yet undetermined syntax, it starts when a leading digit is found after whitespace
-    // and continues while we keep finding digits. A special case is made for dots and underscores where
+    // A number of yet undetermined syntax, it starts when a leading arabic digit is found
+    // and continues while we keep finding arbitrary digits. A special case is made for dots and underscores where
     // they are included as long as a number follows.
-    // This is especially notable for integers since we want to be able to use the dot method syntax on literals
-    // so this method resolves the potential ambiguity.
-    // Characters are also allowed within the number itself but not directly after a dot for method ambiguity reasons.
+    // This is especially notable for integers since we want to be able to use the dot method syntax on literals,
+    // and this method resolves the ambiguity.
+    // After a dot only an arabic digit can occur to disambiguate literal continuation from method syntax.
     Token_Number
 } TokenTag;
 

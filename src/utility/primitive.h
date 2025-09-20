@@ -20,9 +20,12 @@ typedef uint64_t u64;
 #define ERROR_CODE_SUCCESS 0
 #define ERROR_CODE_FAILURE 1
 #define ERROR_CODE_INVALID_USE 2
-#define ERROR_CODE_INTERNAL_INVARIANT 3
+#define ERROR_CODE_PANIC 3
 
-#define INVARIANT_CHECK
+#ifndef __STDC_VERSION__
+#define __STDC_VERSION__ 0L
+#endif
+#define MODERN_C __STDC_VERSION__ >= 202311L
 
 static inline bool memory_eq(const void * lhs, const void * rhs, size_t size) {
     const u8 * ulhs = lhs;
@@ -37,12 +40,10 @@ static inline bool string_eq(const char * lhs, const char * rhs) {
     return lhs[i] == rhs[i];
 }
 
-static inline void panic(const char * reason) {
-    exit(-1);
-}
+void panic(const char * reason);
 
 static inline void invariant(bool condition, const char * reason) {
-#ifdef INVARIANT_CHECK
+#ifndef SKIP_INVARIANT_CHECK
     if (!condition) panic(reason);
 #endif
 }

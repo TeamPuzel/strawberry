@@ -47,3 +47,7 @@ pub type ISize = Int<builtin.default_ptr_size()>
 pub struct Fixed<const SIZE: Integer = builtin.default_int_size(), const DECIMAL: Integer = SIZE / 2> {
 
 }
+
+pub struct Fixed(const SIZE: Integer = builtin.default_int_size(), const DECIMAL: Integer = SIZE / 2) {
+
+}

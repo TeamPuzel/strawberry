@@ -15,7 +15,7 @@
 // Components of the mangling are then prefixed with numbers indicating count.
 //
 // I still need to figure out generic instantiation mangling.
-static inline void mangle() {
+static inline void mangle(void) {
 
 }
 

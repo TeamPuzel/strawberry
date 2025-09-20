@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include "allocator.h"
 
+#define DECLARE_ARRAY(T) typedef struct T##Array T##Array;
+
 #define DEFINE_ARRAY(T)                                                                                                \
 typedef struct T##Array {                                                                                              \
     T * data;                                                                                                          \

@@ -8,3 +8,64 @@ module core
 /// It is also an automatic trait, meaning that any structural type composed of
 /// other copyable types is inherently also copyable unless manually suppressed.
 pub auto trait Copyable = builtin.Copyable
+
+pub enum Ordering {
+    Less, Equal, Greater
+}
+
+pub category PartiallyEquatable<to Other = Self> {
+    infix operator == fun equal(&self, to other: &Other) -> Boolean
+
+    infix operator != fun not_equal(&self, to other: &Other) -> Boolean {
+        not self.equal(to: other)
+    }
+}
+
+pub category Equatable<to Other = Self>: PartiallyEquatable<to: Other>
+
+pub category PartiallyOrdered<with Other = Self>: PartiallyEquatable<to: Other> {
+    fun ordering(&self, with other: &Other) -> Ordering?
+
+    infix operator < fun less(&self, than other: &Other) -> Boolean {
+        if let .Some(ord) = self.ordering(with: other) and ord == .Less then true else false
+    }
+
+    infix operator <= fun less(&self, or equal to other: &Other) -> Boolean {
+        if let .Some(ord) = self.ordering(with: other) and ord == .Less or ord == .Equal then true else false
+    }
+
+    infix operator > fun greater(&self, than other: &Other) -> Boolean {
+        if let .Some(ord) = self.ordering(with: other) and ord == .Greater then true else false
+    }
+
+    infix operator >= fun greater(&self, or equal to other: &Other) -> Boolean {
+        if let .Some(ord) = self.ordering(with: other) and ord == .Greater or ord == .Equal then true else false
+    }
+}
+
+pub category Ordered<with Other = Self>: Equatable<to: Other>, PartiallyOrdered<with: Other> {
+    fun ordering(&self, with other: &Other) -> Ordering
+
+    infix operator < fun less(&self, than other: &Other) -> Boolean {
+        let ord = self.ordering(with: other); ord == .Less
+    }
+
+    infix operator <= fun less(&self, or equal to other: &Other) -> Boolean {
+        let ord = self.ordering(with: other); ord == .Less or ord == .Equal
+    }
+
+    infix operator > fun greater(&self, than other: &Other) -> Boolean {
+        let ord = self.ordering(with: other); ord == .Greater
+    }
+
+    infix operator >= fun greater(&self, or equal to other: &Other) -> Boolean {
+        let ord = self.ordering(with: other); ord == .Greater or ord == .Equal
+    }
+}
+
+/// Partial ordering can be derived for ordered types by wrapping the result in an optional.
+extend Ordered {
+    pub fun ordering(&self, with other: &Other) -> Ordering? {
+        self.ordering(with: other)
+    }
+}

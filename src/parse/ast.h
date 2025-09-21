@@ -24,9 +24,9 @@ typedef struct TokenStream {
     TokenWithProvenance (*next)(void * self);
 } TokenStream;
 
-typedef struct AstExpression {
-    int dummy;
-} AstExpression;
+typedef struct AstExpr {
+
+} AstExpr;
 
 typedef enum AstInlineModifier {
     AstInlineModifier_Unspecified,
@@ -36,26 +36,69 @@ typedef enum AstInlineModifier {
 
 typedef enum AstVisibilityModifier {
     AstVisibilityModifier_Unspecified,
-    AstVisibilityModifier_Public
+    AstVisibilityModifier_Public,
+    AstVisibilityModifier_ModulePublic
 } AstVisibilityModifier;
 
-typedef enum AstNodeTag {
-    AstNode_Compound,
-    AstNode_Function,
-    AstNode_Type,
-    AstNode_Structure,
-    AstNode_Enumeration,
-    AstNode_Trait,
-    AstNode_Class,
-    AstNode_Binding,
-    AstNode_Use,
-    AstNode_Module,
-    AstNode_Attribute
-} AstNodeTag;
+// A generic declaration parameter.
+typedef struct AstGeneric {
+    // Determines if the generic declares a constant parameter or type parameter
+    bool is_constant;
+    // Determines if a default expression is present.
+    bool has_default_expr;
+    // Determines if the parameter is exported as a constant or alias from the parameterized namespace.
+    AstVisibilityModifier visibility;
+    // The default expression if present.
+    AstExpr default_expr;
+    // For a constant parameter it determines the type.
+    AstExpr type_expr;
+    // For a constant parameter it determines the public argument label.
+    const char * label;
+    // Determines the inner and export names.
+    const char * name;
+} AstGeneric;
+
+// A generic list specification associated with a declaration.
+typedef struct AstGenericList {
+    AstGeneric * parameters;
+    size_t count;
+} AstGenericList;
+
+// A callable argument.
+typedef struct AstArgument {
+    // Determines if a default expression is present.
+    bool has_default_expr;
+    // The default expression if present.
+    AstExpr default_expr;
+    // Determines the type of the argument.
+    AstExpr type_expr;
+    // Determines the public argument label.
+    const char * label;
+    // Determines the argument binding name.
+    const char * namel;
+} AstArgument;
+
+// An argument list associated with a callable signature.
+typedef struct AstArgumentList {
+    AstArgument * arguments;
+    size_t count;
+} AstArgumentList;
 
 typedef struct AstNode AstNode;
 struct AstNode {
-    AstNodeTag tag;
+    enum AstNodeTag {
+        AstNode_Compound,
+        AstNode_Function,
+        AstNode_Type,
+        AstNode_Structure,
+        AstNode_Enumeration,
+        AstNode_Trait,
+        AstNode_Class,
+        AstNode_Binding,
+        AstNode_Use,
+        AstNode_Module,
+        AstNode_Attribute
+    } tag;
     union AstNodeData {
         struct {
             AstNode * children;
@@ -65,6 +108,7 @@ struct AstNode {
             const char * name;
             AstVisibilityModifier visibility;
             AstInlineModifier inlining;
+            bool is_async;
         } function;
         struct {
 
@@ -73,7 +117,11 @@ struct AstNode {
 
         } structure;
         struct {
-
+            const char * name;
+            AstVisibilityModifier visibility;
+            AstGenericList generics;
+            AstExpr generic;
+            bool is_open;
         } enumeration;
         struct {
 

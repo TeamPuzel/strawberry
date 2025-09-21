@@ -1,8 +1,8 @@
 module core
 
-/// Copyability is the fundamental trait of value types. It means that one can be implicitly copied,
-/// meaning that the newly formed value is owned while retaining an untouched original also in an owned state.
-/// Effectively this opts out of ownership semantics for structural data.
+/// Copyability is the fundamental category of value types. It means that one can be implicitly copied,
+/// such that that the newly formed value is owned while retaining the untouched original, also in an owned state.
+/// Effectively this opts out of ownership semantics.
 ///
 /// It is an intrinsic trait for the backend to implement.
 /// It is also an automatic trait, meaning that any structural type composed of

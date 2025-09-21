@@ -70,6 +70,8 @@ position(of: shape, in: space)
 If this usage looks natural then a function is generally designed well, and idiomatic usage of the language is
 all about finding excellent naming which remains readable.
 
+In fact it's fine to use more labels
+
 Additionally the language is very permissive when parsing so that unambiguous use of keywords is allowed:
 
 ```
@@ -82,7 +84,7 @@ Obviously this example is rather unreadable but it serves as a clear example of 
 
 ## Source encoding
 
-Source encoding is specified as ASCII or UTF-8 with Unix style encoding.
+Source encoding is specified as ASCII for backwards compatibility or STR-8 as the modern format.
 Compilers should not accept any other encoding as source portability is core to the language.
 
 Additionally, by Unix convention, source files must end on a newline.
@@ -103,8 +105,8 @@ type Decimal
 // A arbitrary boolean type representing either true or false.
 type Boolean
 
-// A source encoded string literal.
-type StaticString
+// A STR-8 encoded string literal.
+type String
 
 // A type with no values which therefore can't be instantiated. It usually marks something as unreachable
 // and participates in exhaustiveness checking.
@@ -210,7 +212,6 @@ as part of that module, so on conventional desktop platforms the language can op
 all the places source files are to be pulled from.
 
 This may seem less structured than a lot of languages, but Strawberry is fundamentally opposed to dependency graph hell.
-
 
 ```
 module core.draw
@@ -524,6 +525,15 @@ There is no further inheritance, classes are either an abstract base or a final 
 Strawberry can sugar objects from other languages, providing interoperability with Objective-C, C++, Swift, Java etc.
 This is yet to be designed.
 
+## Text encoding
+
+Strawberry has built in support for three encodings.
+- ASCII, a legacy English-only format with very few glyphs and obsolete control codes.
+- Unicode, specifically UTF-8, technically the modern format but obsolete by design, true to the expression
+  jack of all trades and master of none. A terrible format with duplicate encodings of equivalent result making
+  processing this format highly inefficient for the sake of supporting ancient script unsuitable for the digital era.
+- Strawberry, STR-8, in the name of simplicity, a new encoding throwing away bad ideas documented further on.
+
 # Draft Overview of the Strawberry Core Library 🍓
 
 Generic programming is cool sure, but eventually something concrete has to fill in the generic parameters.
@@ -548,6 +558,8 @@ Useful core primitives include:
 - `String`
 - `AsciiChar`
 - `AsciiString`
+- `Utf8Char`
+- `Utf8String`
 - `Array<N, T>`
 - `Span<T>`
 - `Buffer<T>`
@@ -559,3 +571,201 @@ Useful core primitives include:
 - `Result<T, E>`
 
 Their availability depends on the target.
+
+# Draft Specification of the Strawberry Text Encoding 🍓
+
+## STR-8
+
+STR-8 stands for the Strawberry 8 Bit Encoding and also phonetically resembles the word "straight" which
+is a good fit for an encoding designed to be exceptionally straightforward while remaining powerful.
+
+Strawberry is not a replacement to Unicode but a more well-constrained, efficient plain text format which
+can *embed* unicode or in fact be customized with many other domain specific standards on top. In a sense
+it's actually a container format.
+
+It does not need backwards compatibility with ASCII or Unicode because it's trivial to just perform a conversion.
+This is not the 1960s where that would be expensive, compatibility is a purely protocol issue not an encoding one.
+For example specify the different format in the HTTP header, it's not that hard, and the encoding is very simple.
+
+There are no emojis, instead there is an escape span, effectively allowing domain protocols to define
+lightweight syntax for such features, including emoji, but without any limits.
+
+The encoding will make an effort to place lower case letters and their upper case equivalents in an alternating fashion,
+so that checking ranges within the alphabet can be performed by a simple range check and testing if the character
+is even or odd. Changing the case is an increment or decrement, which may be less efficient on 50 year old hardware
+compared to ASCII but it's an obvious choice now.
+
+Alphabet encoding is by convention designed like this:
+- The layout places lower case characters at even values and upper case at odd values.
+- Checking without case sensitivity is just a range check `('a'...'Z').contains(x)`.
+- Checking in lower case range adds a check for being even `x.is_even()`.
+- Checking in upper case range adds a check for being odd `x.is_odd()`.
+- Changing the case is an increment/decrement.
+
+This is friendly to humans and reasonable for machines. A simple format to work with, making bugs far less likely.
+
+## Encoding system
+
+The encoding is fundamentally 8 bit, but it can include multibyte spans. The encoding takes advantage of
+the generic metaprogramming ability of the Strawberry language, which can parameterize strings on our knowledge
+about the contents, enabling for instance indexing with integers once it's certain that the string contains no spans.
+
+There are only 6 special characters:
+
+- 00 :: null, a reserved value which is not valid and can be used as a sentinel.
+- 01 :: newline, indicates the end of a line.
+- 02 :: space, indicates a space, self explanatory.
+- 03 :: tab, indicates a tab, self explanatory.
+- 04 :: span start or end, indicates the span of a domain specific data sequence.
+- 05 :: escape, reserved for future use, for example a multibyte superset of the encoding.
+
+## Domain specific escapes
+
+To support domain specific functionality such as emoji or legacy script, STR-8 can embed multibyte spans.
+For the purposes of this document the backtick will be used to signify the escape character in examples.
+
+This is highly efficient because STR-8 is an 8 bit format whose purity can be validated easily. It's simple, if there
+are no escape characters then the string is trivial and can be indexed directly among other statically dispatched
+optimizations. Legacy edge cases should not dictate performance.
+
+Why include this at all? Couldn't text formats do this already? Well, this is still useful for embedding
+other more complex formats in a structured way string types can rely on. No one is forced to use this feature and
+it may not turn out to be very useful. I'll decide if I should keep this feature or not over time.
+
+### Example 1, emoji
+
+Rather than bloating the text format itself with domain specific or legacy features, such things should
+have standards of their own, constrained to their own domain. Consider this example emoji markup:
+
+```
+Hello, world! `emoji.smile`
+```
+
+This could be handled transparently by the UI, with no functional difference from how text works today.
+
+A more memory efficient approach would be to simply put unicode sequences in escapes, but that sacrifices the
+plain text syntax which is very useful. This is outside the scope of a text format itself however.
+
+### Example 2, terminal
+
+A terminal protocol could define a control protocol and use spans to encode the control sequences.
+
+```
+Hello, `myterm.rgb(1.0, 0.5, 0.5)` world! `myterm.bell`
+```
+
+This makes far more sense than offering domain specific features like bell invocation as a dedicated code point
+the way Unicode does. Instead protocols get to use their own namespaces.
+
+## Encoding table
+
+```
+00 :: null
+01 :: newline
+02 :: space
+03 :: tab
+04 :: span
+05 :: escape
+06 :: 0
+07 :: 1
+08 :: 2
+09 :: 3
+0A :: 4
+0B :: 5
+0C :: 6
+0D :: 7
+0E :: 8
+0F :: 9
+10 :: a
+11 :: A
+12 :: b
+13 :: B
+14 :: c
+15 :: C
+16 :: d
+17 :: D
+18 :: e
+19 :: E
+1A :: f
+1B :: F
+1C :: g
+1D :: G
+1E :: h
+1F :: H
+20 :: i
+21 :: I
+22 :: j
+23 :: J
+24 :: k
+25 :: K
+26 :: l
+27 :: L
+28 :: m
+29 :: M
+2A :: n
+2B :: N
+2C :: o
+2D :: O
+2E :: p
+2F :: P
+30 :: q
+31 :: Q
+32 :: r
+33 :: R
+34 :: s
+35 :: S
+36 :: t
+37 :: T
+38 :: u
+39 :: U
+3A :: v
+3B :: V
+3C :: w
+3D :: W
+3E :: x
+3F :: X
+40 :: y
+41 :: Y
+42 :: z
+43 :: Z
+44 :: .
+45 :: ,
+46 :: :
+47 :: ;
+48 :: '
+49 :: "
+4A :: !
+4B :: ?
+4C :: (
+4D :: )
+4E :: [
+4F :: ]
+50 :: {
+51 :: }
+52 :: +
+53 :: -
+54 :: *
+55 :: /
+56 :: \
+57 :: `
+58 :: _
+59 :: #
+5A :: %
+5B :: =
+5C :: <
+5D :: >
+5E :: |
+5F :: &
+60 :: ^
+61 :: ~
+62 :: @
+63...7F :: base reserved
+80...FF :: superset reserved
+```
+
+## STR-16
+
+STR-16 is a 16 bit multilingual extension of STR-8 which uses a wider encoding.
+At the cost of memory usage this encoding supports a wider range of script.
+
+> TODO: Determine if this is useful.

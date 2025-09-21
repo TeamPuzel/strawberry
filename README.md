@@ -1,11 +1,15 @@
-# The Strawberry Programming Language 🍓
+# The Strawberry Project 🍓
 
-Strawberry is a meta programming language focused on extreme generic programming without using any runtime primitives.
-It is purely an expression of logic which can implement these primitives in itself often by communicating with
-a lowering backend directly, with most code being written in terms of semantics alone.
+Software from scratch for the sake of a simpler world.
 
-This is the specification and C99 reference implementation of the Strawberry Programming Language
-toolchain, including the inherently required interpreter and backends for lowering the language to various targets.
+## What is Strawberry
+
+- Strawberry is a project with the goal of breaking convention and starting over, focused on the long term.
+- Strawberry is a meta programming language focused on extreme generic programming without using concrete primitives.
+- Strawberry is an extensible, portable toolchain for working with software projects.
+- Strawberry is a semantic text encoding for efficient and safe processing, convertible with UTF-8, not compatible.
+
+This is the specification and reference implementation of the Strawberry toolchain.
 
 ## License
 

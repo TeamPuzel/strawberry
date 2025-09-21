@@ -1,5 +1,6 @@
 #ifndef NES_H
 #define NES_H
+#include "../../parse/sir.h"
 // This is a very esoteric platform something like LLVM is unlikely to ever support, and most languages are
 // inherently incompatible with its constraints. Strawberry is, uniquely, a modern programming language designed
 // in a way that's compatible with architectures like this. There is a notion that such constrained platforms
@@ -15,5 +16,14 @@
 // a single developer can relatively easily adapt for whatever use case they want, such as homebrew for
 // all sorts of abandoned hardware which tends to just have ancient third party gcc support, limiting developers
 // to C and ancient versions of C++.
+
+// NES specific configuration flags.
+typedef struct NesConfig {
+    // Allows the backend to lower unofficial NES specific opcodes.
+    // Occasionally this can result in less bytes or cycles used.
+    bool use_unofficial_opcodes;
+} NesConfig;
+
+void lower_6502_nes(SirProgram program);
 
 #endif

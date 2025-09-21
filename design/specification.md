@@ -418,10 +418,10 @@ fun caller() {
 ```
 
 The language will instantiate the throwing function with or without the exception handling. This has a minor effect
-on binary size compared to stack unwinding tables but it depends on manual exception forwarding. Still, the expectation
-is that most code will not abuse this for normal errors and will
+on binary size compared to stack unwinding tables but it depends on manual exception forwarding; that being said
+I believe that explicit, checked exceptions are great because they fully specify what the program does in the signature.
 
-The desugared form could be simplified to something like this to explain the mechanism, though the names
+The desugared form could be visualised to something like this, but the names
 would of course require more involved mangling.
 
 ```

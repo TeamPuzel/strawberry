@@ -1,0 +1,43 @@
+module core
+
+pub struct RawPointer {
+
+}
+
+pub struct Pointer<Pointee> {
+
+}
+
+pub struct NullablePointer<Pointee> {
+
+}
+
+pub struct MemoryLayout<of: T> {
+    fun size() -> Integer {
+        #size_of<T>()
+    }
+
+    fun stride() -> Integer {
+        #stride_of<T>()
+    }
+
+    fun alignment() -> Integer {
+        #alignment_of<T>()
+    }
+}
+
+/// A type which can provide memory. This category is highly unsafe as it deals with raw memory and has
+/// to preserve the safety guarantees of the memory model.
+///
+/// @param Address:
+///     The type produced from the allocation.
+/// @param Layout:
+///     The type providing layout information.
+/// @param Error:
+///     The type used for allocation failure.
+pub unsafe category Allocator<Address, Layout, error: Error = Never> {
+    fun allocate(&self, layout: Layout) throws Error -> Address
+    unsafe fun deallocate(&self, _ address: Address, layout: Layout)
+    unsafe fun grow(&self, _ address: Address, old_layout: Layout, new_layout: Layout) throws Error -> Address
+    unsafe fun shrink(&self, _ address: Address, old_layout: Layout, new_layout: Layout) throws Error -> Address
+}

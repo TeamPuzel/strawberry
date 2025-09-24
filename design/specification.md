@@ -16,8 +16,8 @@ Comments start as `//` with an arbitrary space terminated pattern following. Cur
 a few comment patterns defined but this reserved naming allows future expansion without source breakage.
 
 ```
-// Comments are capitalized and punctuated normally.
-/// Documentation comments are markdown-like and must precede a declaration.
+// Comments should be capitalized and punctuated properly.
+/// Documentation comments must precede a declaration and are used by the documentation generator.
 ```
 
 To clarify, the leading space is in fact mandatory to reserve a place for language evolution if one day
@@ -91,30 +91,51 @@ Additionally, by Unix convention, source files must end on a newline.
 
 ## Pure primitives
 
-The Strawberry language is abstract and does not assume any architecture specific data types or memory.
-The type system itself needs to be able to reason about numbers and logic however. For this reason there do exist
-some pure compile time primitives.
+The Strawberry language is abstract and does not assume any architecture specific data types or memory, and the
+default portable form of the language is entirely logical, including a lack of addressing.
+
+Most of primitive data types are instead implemented using calls into the compiler or backend.
+The syntax looks like this:
 
 ```
-// An arbitrarily precise signed whole number. It is an efficient compile time arithmetic value.
-type Integer
-
-// An arbitrarily precise binary coded decimal number. It is not as efficient but can express anything.
-type Decimal
-
-// A arbitrary boolean type representing either true or false.
-type Boolean
-
-// A STR-8 encoded string literal.
-type String
-
-// A type with no values which therefore can't be instantiated. It usually marks something as unreachable
-// and participates in exhaustiveness checking.
-type Never
+#Type
+#call()
 ```
 
-None of these types can be lowered into runtime representation. More concrete primitives should instead implement
-checked implicit conversion from pure primitives.
+They describe directly invoking a special request to the compiler, and if the compiler does not handle it
+the request falls through to the backend. If it falls through completely a compile error is raised, but this
+is done lazily; if a compiler invocation is not needed on a compile-time or runtime path it's ignored.
+
+The laziness of intrinsics is especially useful because it avoids the need for conditional compilation for constructs
+that use them. Code is free to reason about concepts that can't be lowered as long as they are optimized out
+or generally unused, only otherwise is an error actually raised. For example if a construct only has one method
+that does not work, the rest of the code still works, and so does the method itself if used in compile time context.
+
+Backends are allowed to implement intrinsics arbitrarily, that includes generating calls to runtime functions which
+may require linking additional runtime support; for instance an NES backend may emit calls to arithmetic procedures
+as the system itself only supports 8 bit arithmetic at instruction set level.
+
+The intention is to make the interaction between logical constructs and evaluation/lowering obvious, supporting
+extending the compiler with more backends easier than with most other toolchains. A lone hobbyist should be
+able to port their indie game to an arbitrary system without wasting too much time, or an embedded developer
+could get code generation for whatever esoteric hardware they want to support.
+
+This does not mean dead code is not checked. It still is, but it does not need lowering.
+With that, Strawberry has conventional ergonomics, yet it remains abstract.
+
+Another such use case could be this:
+
+```
+pub type ClassRepr<T> = if #target("jvm") then #JvmClass<T> else Rc<T>
+
+pub base class MyClass: ClassRepr<Self> { ... }
+```
+
+changing the class memory management strategy depending on the platform, conditionally applying the intrinsics.
+
+For even better ergonomics the language server should ideally inform the user if the current target can lower
+the feature, or offer a list of which backends can/can't do that. For generic code it is important that it does
+not accidentally depend on concrete constructs.
 
 ## Ownership
 
@@ -163,7 +184,7 @@ Still, this is purely lexically scoped aliasing, and that's not enough to implem
 The language requires a way to tie lifetimes together:
 
 ```
-trait Iterator<Element> {
+category Iterator<Element> {
     fun next(&mut self) -> Element?
 }
 
@@ -178,7 +199,7 @@ struct IndexingIterator<'a, Target> where Target: IndexedCollection {
 }
 
 extend IndexingIterator: Iterator<Target.Element> {
-    pub fun next(&mut self) -> Target.Element? {
+    pub fun next(mut &self) -> Target.Element? {
         if self.target.contains(cursor) {
             self.target.next_index()
         }
@@ -202,7 +223,86 @@ pub fun main() {
 
 Free functions are almost never used and labels exist, which is why the language does not need standalone namespacing,
 instead relying on nesting and association. If a module has name collisions within itself generally the naming is bad
-or not just scoped correctly.
+or not scoped correctly.
+
+## Iterators
+
+There are no iterators (as seen in Rust for example). The approach taken is to fix what Swift attempted, meaning it's:
+- More powerful.
+- More ergonomic.
+- Just as efficient.
+
+I will make the comparison to Rust here. In Rust traits are often treated as interfaces, not typeclasses, even
+though they have the capability to do so. Iterators are a semi-concrete concept of iterating things sequentially,
+and then there's a lot of utility functions like `map` which wrap iterators and are iterators themselves.
+
+That's kind of confusing to me as it loses valuable semantic information.
+
+I will simplify by only showing consuming examples now. This is the consuming iterator:
+
+```
+pub category Iterator<of: Element>  {
+    fun next(mut& self) -> Element?
+}
+```
+
+That's the complete definition. The iterator is an evaluator of the lazy wrapping, not the lazy wrapping itself.
+
+Consider a design like this:
+
+```
+// We define the actual typeclass of iterable constructs.
+pub category Sequence<of: Element, Iterator> {
+    fun iterator(self) -> Iterator
+}
+
+// We can add non-overrideable sequence adapters now, here and not on iterators.
+extend Sequence {
+    pub fun map<Transform, R>(self, _ transform: Transform) -> Map<Self, R, Transform>
+    where
+        Transform: (Element) -> R
+    {
+        .init(inner: self, transform: transform)
+    }
+}
+
+// The owning map itself would be something like this.
+// We can namespace it to the category to avoid polluting the global namespace.
+pub struct Sequence.Map<T, R, Transform>
+where
+    T: Sequence,
+    Transform: (T.Element) -> R
+{
+    inner: T
+    transform: Transform
+}
+
+// And it's of course a sequence too, now we can compose infinitely, statically. You can map on a map and so on.
+// With generators there isn't even a need to implement the iterator manually.
+extend Map: Sequence where T: Sequence {
+    pub fun iterator(self) -> Iterator {
+        gen {
+            mut i = self.inner.iterator()
+            while let .Some(next) = i.next() do yield self.transform(next)
+        }
+    }
+}
+
+// But it gets better because what's stopping a map from working on collections too?
+// This way you get a wrapping where indexing into it is also mapped, making our mapping random access.
+// I feel like this is just a more powerful way to express container operations in a generic way.
+extend Map: IndexedCollection where T: IndexedCollection {
+    ...
+}
+```
+
+This is inspired by Swift, just done efficiently instead of eagerly returning [T] like it does.
+
+You could imagine that any given operation could specialize to provide as much functionality as it can
+based on its requirements and the capabilities of the underlying type.
+
+With references as a standalone type this would already encapsulate mutation and borrowing, but that is not yet decided.
+It might be worth it to lean a little bit into C++ and allow specifying reference types through generics.
 
 ## Modules
 
@@ -218,6 +318,13 @@ module core.draw
 ```
 
 ## Functions
+
+```
+// A simple function looks like this.
+fun foo() -> () { ... }
+
+// The empty tuple is implicit and the compiler should warn on such use. Instead, the syntax should look like this.
+```
 
 ## Contracts
 
@@ -254,7 +361,65 @@ First of all this is a new name so here's all the existing terms and why I had t
 Category is a very similar and slightly more concrete term compared to class, and has no widely standardized meaning
 in programming. In math, category has a meaning far more constrained than the dictionary definition, but I don't care.
 
-TLDR: Everything else is either not a match by definition or alredy used in ways I wish to distance this feature from.
+> TLDR: Everything else is either not a match by definition or alredy used in ways I wish to distance this feature from.
+
+The actual semantics are very involved but they allow for very powerful generic programming making categories
+the most important feature of the language. Categories neatly remove most code duplication by
+modelling the very semantics of the *categories* types belong to and deriving most functionality.
+This solves the same problem inheritance promises to, but with far more flexibility.
+
+```
+pub category PartiallyOrdered<with Other = Self>: PartiallyEquatable<to: Other> {
+    fun ordering(&self, with other: &Other) -> Ordering?
+
+    infix operator < fun less(&self, than other: &Other) -> Boolean {
+        if let .Some(ord) = self.ordering(with: other) and ord == .Less then true else false
+    }
+
+    ...
+}
+
+// Categories can inherit from each other and override implementations, describing a useful subtyping relationhip.
+pub category Ordered<with Other = Self>: Equatable<to: Other>, PartiallyOrdered<with: Other> {
+    // When the signature is overloaded on the return type normal inference rules apply, however additional
+    // priority is given to categories lower in the hierarchy.
+    fun ordering(&self, with other: &Other) -> Ordering
+
+    // When the signature is an exact match the subtype overrides it completely.
+    infix operator < fun less(&self, than other: &Other) -> Boolean {
+        let ord = self.ordering(with: other); ord == .Less
+    }
+
+    ...
+}
+
+// Default implementations can be provided in extensions, not just inline.
+// In this case it's useful to derive the partial ordering from total ordering.
+// The overload resolution rules will look for the most refined implementation, so the lower
+// in the hierarchy the higher the priority. A concrete type is the lowest it can go so it will always be prioritized.
+extend Ordered {
+    pub fun ordering(&self, with other: &Other) -> Ordering? {
+        self.ordering(with: other)
+    }
+}
+
+// Categories are the primary way to work with generics. Without constraints you can't do much with erased types.
+fun foo<T>(lhs: T, rhs: T) where T: Ordered -> Ordering {
+    lhs.ordering(with: rhs)
+}
+
+// A lot of the time it's possible to use the sugar erasure form instead of explicitly writing the generics.
+fun foo(bar: Debug) {
+    print(debug: bar)
+}
+
+// Another option is using the unsized dynamically dispatched form which is rarely used but useful for
+// more dynamic polymorphism in special cases. For the most part though dynamism is achieved through classes.
+fun foo(bar: &dyn Debug) {
+    print(debug: bar)
+}
+
+```
 
 ## Structures
 
@@ -265,7 +430,7 @@ more than the data itself, carrying additional semantics and generics as well as
 // Fundamentally structs can just be used as a nominal alternative to tuples.
 // Another core difference is how their data members behave, as by default they are immutable. An immutable binding
 // of a struct is purely immutable, but unlike a tuple the struct can make members immutable no matter the context.
-// Everything inside a struct is also inherently private
+// Everything inside a struct is also inherently private.
 struct Rectangle {
     width: Int
     height: Int
@@ -460,7 +625,7 @@ fun ignores_exception() -> Ptr<Entity> {
 fun caller() {
     let a = match forwards_exception() {
         .Success(v) -> v
-        .AllocationException(e) -> ret print("allocation failed")
+        .AllocationException(e) -> return print("allocation failed")
     }
     let b = ignores_exception()
 }
@@ -558,7 +723,6 @@ Useful core primitives include:
 - `String`
 - `AsciiChar`
 - `AsciiString`
-- `Utf8Char`
 - `Utf8String`
 - `Array<N, T>`
 - `Span<T>`
@@ -610,7 +774,7 @@ The encoding is fundamentally 8 bit, but it can include multibyte spans. The enc
 the generic metaprogramming ability of the Strawberry language, which can parameterize strings on our knowledge
 about the contents, enabling for instance indexing with integers once it's certain that the string contains no spans.
 
-There are only 6 special characters:
+There are only 6 special values:
 
 - 00 :: null, a reserved value which is not valid and can be used as a sentinel.
 - 01 :: newline, indicates the end of a line.
@@ -759,13 +923,7 @@ the way Unicode does. Instead protocols get to use their own namespaces.
 60 :: ^
 61 :: ~
 62 :: @
-63...7F :: base reserved
+63 :: $
+64...7F :: base reserved
 80...FF :: superset reserved
 ```
-
-## STR-16
-
-STR-16 is a 16 bit multilingual extension of STR-8 which uses a wider encoding.
-At the cost of memory usage this encoding supports a wider range of script.
-
-> TODO: Determine if this is useful.

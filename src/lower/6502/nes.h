@@ -16,6 +16,19 @@
 // a single developer can relatively easily adapt for whatever use case they want, such as homebrew for
 // all sorts of abandoned hardware which tends to just have ancient third party gcc support, limiting developers
 // to C and ancient versions of C++.
+//
+// The NES has fairly limited memory and we need to make clever use of it to work around instruction set limitations.
+// The allocation is defined like this:
+// 00 00...00 3F :: 8 64 bit pseudo registers, used to pass arguments before falling back on the stack.
+// 00 40...00 FF :: default static allocation.
+// 01 00...01 FF :: the hardware stack, only used for return addresses.
+// 02 00...07 FF :: the software stack, used for argument overflow and local variables.
+//
+// Due to the limited stack space allocating large data structures on it is ill advised, so a cartridge with
+// a lot of additional memory is recommended, managed by a global allocator.
+//
+// Strings are allocated in the rom instead as they are rather large.
+// The recommended mapper configuration is MMC5 as it provides a lot of memory and rom.
 
 // NES specific configuration flags.
 typedef struct NesConfig {

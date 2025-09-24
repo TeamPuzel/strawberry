@@ -3,17 +3,13 @@ module core
 /// Copyability is the fundamental category of value types. It means that one can be implicitly copied,
 /// such that that the newly formed value is owned while retaining the untouched original, also in an owned state.
 /// Effectively this opts out of ownership semantics.
-///
-/// It is an intrinsic trait for the backend to implement.
-/// It is also an automatic trait, meaning that any structural type composed of
-/// other copyable types is inherently also copyable unless manually suppressed.
-pub auto trait Copyable = builtin.Copyable
+pub category Copyable = #Copyable
 
 pub enum Ordering {
     Less, Equal, Greater
 }
 
-pub category PartiallyEquatable<to Other = Self> {
+pub category PartiallyEquatable<to: Other = Self> {
     infix operator == fun equal(&self, to other: &Other) -> Boolean
 
     infix operator != fun not_equal(&self, to other: &Other) -> Boolean {
@@ -21,9 +17,9 @@ pub category PartiallyEquatable<to Other = Self> {
     }
 }
 
-pub category Equatable<to Other = Self>: PartiallyEquatable<to: Other>
+pub category Equatable<to: Other = Self>: PartiallyEquatable<to: Other>
 
-pub category PartiallyOrdered<with Other = Self>: PartiallyEquatable<to: Other> {
+pub category PartiallyOrdered<with: Other = Self>: PartiallyEquatable<to: Other> {
     fun ordering(&self, with other: &Other) -> Ordering?
 
     infix operator < fun less(&self, than other: &Other) -> Boolean {
@@ -43,7 +39,7 @@ pub category PartiallyOrdered<with Other = Self>: PartiallyEquatable<to: Other> 
     }
 }
 
-pub category Ordered<with Other = Self>: Equatable<to: Other>, PartiallyOrdered<with: Other> {
+pub category Ordered<with: Other = Self>: Equatable<to: Other>, PartiallyOrdered<with: Other> {
     fun ordering(&self, with other: &Other) -> Ordering
 
     infix operator < fun less(&self, than other: &Other) -> Boolean {
@@ -69,3 +65,5 @@ extend Ordered {
         self.ordering(with: other)
     }
 }
+
+pub category

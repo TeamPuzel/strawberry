@@ -4,16 +4,18 @@ Software from scratch for the sake of a simpler world.
 
 ## What is Strawberry
 
-- Strawberry is a project with the goal of breaking convention and starting over, focused on the long term.
+- Strawberry is a project with the goal of breaking convention and starting over, focused on long term sustainability.
 - Strawberry is a meta programming language focused on extreme generic programming without using concrete primitives.
-- Strawberry is an extensible, portable toolchain for working with software projects.
-- Strawberry is a semantic text encoding for efficient and safe processing, convertible with UTF-8, not compatible.
+- Strawberry is an extensible, portable toolchain for working with portable software projects.
+- Strawberry is a semantic plain text encoding for efficient and safe processing by default with extensible
+  domain specific spans such as embedded UTF-8 or semantic emoji.
+- Strawberry is a kernel and operating system focused on individual user freedom and fun.
 
-This is the specification and reference implementation of the Strawberry toolchain.
+This is the specification and implementation of the Strawberry Project.
 
 ## License
 
-There is no license currently as I still have to find one I like best. The general spirit of the license will be
+There is no license currently as I still have to find one I like best. The general spirit of the license will be:
 - No use of the source for training AI.
 - Do whatever you want where object distribution does not need to include the license, only source distribution does.
 
@@ -28,24 +30,20 @@ an implementation of the language. I would like for anyone using the language to
 
 ## Why yet another language?
 
-Strawberry is an abstract language. It has no concept of pointers or even numbers of defined semantics
+Strawberry is an abstract language. It has no concept of pointers or even numbers of concrete semantics
 or memory representation. In fact, Strawberry has no inherent concept of memory at all. It works by implementing
-these concepts with the language semantics themselves and communicating with the compiler backend directly.
+these concepts with the libraries themselves and communicating with the compiler backend through intrinsics, allowing
+for a standardized syntax for heavily templated code.
 
 This intention is unconventional. Strawberry is a simple meta language inspired by generics/templates and consteval
-as seen partially in C++, Swift and Rust. It is a type system and an expression of logic
+as seen to some extent in C++, Swift and Rust. It is a type system and an expression of logic
 through abstract semantics with no particular concrete implementation.
-
-That does not mean these ideas, such as pointers, are not in the language. They are simply generic types themselves
-which implement themselves by calling into the compiler with intrinsics, kind of like Swift but more complete.
-It also intends to implement algorithms in an abstract way, much like Swift implements features like sorting
-in terms of an abstract random access collection protocol.
 
 What does this buy for the language? It means that while a Strawberry program may rely on primitives
 only available for certain platforms, most code can be implemented in an abstract, truly portable way. It should
 allow for reuse of the same abstract code on anything from a modern CPU, a GPU and architectures of the future or past.
 Strawberry could be used for a Minecraft mod on the JVM, an 8 bit NES game, embedded programs, scripting, DSLs,
-anything — because Strawberry is a self contained meta language designed with no standard concrete primitives in mind.
+anything — because Strawberry is a self contained meta language designed purely with logic expression in mind.
 
 I believe that this vision is not yet achieved by any language currently available. They all rely on some fundamental
 idea like a "long" or "i32", or specific addressing semantics. That's fine but it makes everything built in terms

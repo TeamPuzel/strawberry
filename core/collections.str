@@ -1,0 +1,52 @@
+module core
+
+pub category Iterator<of: Element> {
+    fun next(mut &self) -> Element
+}
+
+pub category BorrowingIterator<'a, of: Element> {
+    fun next(mut &self) -> &'a Element
+}
+
+pub category MutatingIterator<'a, of: Element> {
+    fun next(mut &self) -> mut&'a Element
+}
+
+pub category Sequence<of: Element, IteratorType> where IteratorType: Iterator<of: Element> {
+    fun iterator(&self) -> IteratorType
+}
+
+pub category MutableSequence<of: Element, IteratorType>: Sequence<of: Element, IteratorType>
+where
+    IteratorType: Iterator<of: Element>
+{
+    fun mutating_iterator(&self) -> IteratorType
+}
+
+pub category Collection {
+
+}
+
+pub category IndexedCollection {
+
+}
+
+pub category Appendable<with: Element> {
+    fun append(mut &self, _ element: Element)
+
+    fun append(mut &self, contents of other: Sequence) {
+        for element in other {
+            try self.append(element)
+        }
+    }
+}
+
+pub category Prependable<with: Element> {
+    fun prepend(mut &self, _ element: Element)
+
+    fun prepend(mut &self, contents of other: Sequence) {
+        for element in other {
+            try self.prepend(element)
+        }
+    }
+}

@@ -150,6 +150,14 @@ Such a category will:
 - Inherit the requirements from the supercategories.
 - Have the ability to override defaults or provide new ones.
 
+## Combined constraints
+
+Categories can be combined to constrain a value more precisely.
+
+```
+fun foo(bar: Equatable and Drawable)
+```
+
 ## Generic parameterization
 
 What categories allow is static polymorphism and constraints. An erased type can only be used within the
@@ -219,14 +227,14 @@ which permits a higher degree of inference.
 
 ## Static dispatch
 
-Once categories are defined, there are
+Once categories are defined, they can serve as constraints
 
-## Existential dispatch
+## Dynamic dispatch
 
 The language can build tables to allow for runtime polymorphism. This is more complicated than a simple vtable
 because of the need to dynamically handle parameterization.
 
-Currently this remains unspecified.
+Currently this remains unspecified as it may not actually be a required feature.
 
 ## Variadic generics
 
@@ -242,7 +250,7 @@ category Equatable<to: Other = Self> {
 
 // A default derivation of equality for all types which destructure into tuples.
 // This depends on reflection which is not specified yet.
-derive Equatable where (T...) = Self, (T: Equatable)... {
+extend Equatable where (T...) = Self, (T: Equatable)... {
     operator == fun equal(&self, to other: &Other) -> Boolean {
         for field of Self::Type::fields do if self::field != other::field then return false
         true

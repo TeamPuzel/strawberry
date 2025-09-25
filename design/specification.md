@@ -47,13 +47,13 @@ be warned about if it's not a multiple of 4.
 - Types are pascal case, such as `MyType`.
 - Generic types are pascal case, not single letters; `<Key, Value>` not `<K, V>`.
   The exception to this would be code so generic that there's no good name, then feel free to use a letter.
-- Constants are upper case, such as 'MY_CONSTANT`.
-- Functions and value bindings are snake case, such as `fun draw(_ plane: some Plane, from origin: Origin)`
+- Functions, constant and value bindings are snake case, such as `fun draw(_ plane: some Plane, from origin: Origin)`
 
 Pascal case should follow modern convention of capitalizing acronyms, like `Ascii` not `ASCII`.
 
 This naming convention effectively ensures that types, constants and members practically never collide.
-Compilers should warn if these conventions are not followed.
+Compilers should warn if these conventions are not followed, this is critical as ambiguity can interfere with
+category disambiguation syntax such as `value.Category.function()`
 
 As a rule of thumb however, if a function has a name with multiple words it's probably badly named. The language
 uses argument labels which mix the name and arguments more naturally.
@@ -89,7 +89,7 @@ Compilers should not accept any other encoding as source portability is core to 
 
 Additionally, by Unix convention, source files must end on a newline.
 
-## Pure primitives
+## Pure, lazy primitives
 
 The Strawberry language is abstract and does not assume any architecture specific data types or memory, and the
 default portable form of the language is entirely logical, including a lack of addressing.
@@ -225,6 +225,12 @@ Free functions are almost never used and labels exist, which is why the language
 instead relying on nesting and association. If a module has name collisions within itself generally the naming is bad
 or not scoped correctly.
 
+Constructs can be namespaced within other constructs. Instead of `SequenceMap<T>` polluting the global namespace
+you can declare `Sequence.Map<T>`. This serves as namespacing without having to nest them, and
+notably scopes to the nominal construct itself, not generic instances, so there is only one Map for all sequences.
+
+Nesting with respect for generics is also possible but is instead done in an extension.
+
 ## Iterators
 
 There are no iterators (as seen in Rust for example). The approach taken is to fix what Swift attempted, meaning it's:
@@ -268,7 +274,7 @@ extend Sequence {
 
 // The owning map itself would be something like this.
 // We can namespace it to the category to avoid polluting the global namespace.
-pub struct Sequence.Map<T, R, Transform>
+pub struct Sequence.Map<T, Transform, R>
 where
     T: Sequence,
     Transform: (T.Element) -> R
@@ -324,6 +330,45 @@ module core.draw
 fun foo() -> () { ... }
 
 // The empty tuple is implicit and the compiler should warn on such use. Instead, the syntax should look like this.
+fun foo() { ... }
+
+// Multiple return values are supported through tuples, ideally with named fields.
+fun position() -> (x: Int, y: Int) { ... }
+```
+
+## Stackless coroutines
+
+### Generators
+
+There exists syntax sugar for generators, avoiding the need to implement them manually. Instead, the code
+can be implemented as a coroutine and the compiler can rewire it into a struct.
+
+```
+fun asc(mut n: Int) -> Generator {
+    gen {
+        let next = n
+        n += 1
+        loop yield next
+    }
+}
+
+pub fun main() {
+    let g = asc(0)
+
+    for n in g where n < 20 {
+        print(n)
+    }
+}
+```
+
+### Async
+
+Similarly to generators, composable async sugar is also defined, rewiring code into a struct.
+
+```
+async fun load_bytes(from url: &String) -> Buffer<Byte> {
+    get_file_from_network(url).await
+}
 ```
 
 ## Contracts
@@ -418,6 +463,27 @@ fun foo(bar: Debug) {
 fun foo(bar: &dyn Debug) {
     print(debug: bar)
 }
+```
+
+### Category qualification
+
+```
+// Types can implement the same category multiple times provided that the parameters are different.
+// This has the potential to create collisions, so it's possible to refer to a specific category by name.
+// Not a common situation as usually generic code will only be aware of the categories it requires,
+// but for completeness it is something that can be disambiguated in two ways.
+
+// Consider these two categories which both provide a generic element type.
+category Sequence<of: Element>
+category MutableSequence<of: Element>
+
+// We can neatly be generic over such a category, no collision here.
+fun print_all_values(of sequence: &Sequence) where Sequence.Element: Format {
+    for element of sequence do print(element)
+}
+
+// But what about this edge case?
+fun print_and_double_all(of sequence: Sequence and MutableSequence)
 
 ```
 
@@ -682,8 +748,6 @@ pub class Player: Entity {
     dyn fun method() { ... }
 }
 ```
-
-There is no further inheritance, classes are either an abstract base or a final derived.
 
 ## Foreign objects
 

@@ -1,24 +1,24 @@
 module core.draw
 
-pub trait Plane {
+pub category Plane {
     fun get(&self, x: Int, y: Int) -> Color
 }
 
-pub trait SizedPlane: Plane {
+pub category SizedPlane: Plane {
     fun width(&self) -> Int
     fun height(&self) -> Int
 }
 
-pub trait MutablePlane: Plane {
+pub category MutablePlane: Plane {
     fun set(&mut self, x: Int, y: Int, color: Color)
 }
 
-pub trait PrimitivePlane: Plane {
-    init(flattening plane: &some SizedPlane) -> Self
+pub category PrimitivePlane: Plane {
+    init(flattening plane: &SizedPlane) -> Self
 }
 
-pub extend Plane {
-    fun flatten<T>(&self) -> T where T: PrimitivePlane {
+extend Plane {
+    pub fun flatten<T>(&self) -> T where T: PrimitivePlane {
         T(flattening: self)
     }
 }
@@ -31,24 +31,24 @@ pub struct PlaneSlice<Inner> where Inner: Plane {
     height: Int
 }
 
-pub extend PlaneSlice: Plane {
-    fun get(&self, x: Int, y: Int) -> Color {
+extend PlaneSlice: Plane {
+    pub fun get(&self, x: Int, y: Int) -> Color {
         self.inner.get(x: x + self.x, y: y + self.y)
     }
 }
 
-pub extend PlaneSlice: SizedPlane where Inner: SizedPlane {
-    fun width(&self) -> Int {
+extend PlaneSlice: SizedPlane where Inner: SizedPlane {
+    pub fun width(&self) -> Int {
         self.width
     }
 
-    fun height(&self) -> Int {
+    pub fun height(&self) -> Int {
         self.height
     }
 }
 
-pub extend PlaneSlice: MutablePlane where Inner: MutablePlane {
-    fun set(&mut self, x: Int, y: Int, color: Color) {
+extend PlaneSlice: MutablePlane where Inner: MutablePlane {
+    pub fun set(mut &self, x: Int, y: Int, color: Color) {
         self.inner.set(x: x + self.x, y: y + self.y, color: color)
     }
 }

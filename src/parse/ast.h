@@ -30,14 +30,16 @@ typedef struct AstExpr {
 
 typedef enum AstInlineModifier {
     AstInlineModifier_Unspecified,
-    AstInlineModifier_Inline,
+    AstInlineModifier_Always,
     AstInlineModifier_Never
 } AstInlineModifier;
 
 typedef enum AstVisibilityModifier {
     AstVisibilityModifier_Unspecified,
     AstVisibilityModifier_Public,
-    AstVisibilityModifier_ModulePublic
+    AstVisibilityModifier_ModulePublic,
+    AstVisibilityModifier_Private,
+    AstVisibilityModifier_Protected
 } AstVisibilityModifier;
 
 // A generic declaration parameter.
@@ -92,14 +94,14 @@ struct AstNode {
         AstNode_Type,
         AstNode_Structure,
         AstNode_Enumeration,
-        AstNode_Trait,
+        AstNode_Category,
         AstNode_Class,
         AstNode_Binding,
         AstNode_Use,
         AstNode_Module,
         AstNode_Attribute
     } tag;
-    union AstNodeData {
+    union {
         struct {
             AstNode * children;
             u32 count;
@@ -125,7 +127,7 @@ struct AstNode {
         } enumeration;
         struct {
 
-        } trait;
+        } category;
         struct {
 
         } class;

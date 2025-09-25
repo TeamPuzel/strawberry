@@ -1,37 +1,39 @@
 module core
 
-pub category Iterator<of: Element> {
-    fun next(mut &self) -> Element
+/// A type which produces values.
+pub category Generator<of: Element> {
+    fun next(mut &self) -> Element?
 }
 
-pub category BorrowingIterator<'a, of: Element> {
-    fun next(mut &self) -> &'a Element
+/// A more refined form of a generator, specific to iterating through sequential data.
+pub category Iterator<of: Element>: Generator<of: Element>
+
+/// A type which provides a way to consume a sequence of values through iteration.
+pub category Sequence<of: Element, Iter> where Iter: Iterator<of: Element> {
+    fun iterator(self) -> Iter
 }
 
-pub category MutatingIterator<'a, of: Element> {
-    fun next(mut &self) -> mut&'a Element
+/// A type which provides a way to observe a sequence of values through iteration.
+pub category BorrowingSequence<of: Element, Iter> where Iter: Iterator<of: &Element> {
+    fun borrowing_iterator(&self) -> Iter
 }
 
-pub category Sequence<of: Element, IteratorType> where IteratorType: Iterator<of: Element> {
-    fun iterator(&self) -> IteratorType
+/// A type which provides a way to mutate a sequence of values through iteration.
+pub category MutableSequence<of: Element, Iter> where Iter: Iterator<of: mut &Element> {
+    fun mutating_iterator(mut &self) -> Iter
 }
 
-pub category MutableSequence<of: Element, IteratorType>: Sequence<of: Element, IteratorType>
-where
-    IteratorType: Iterator<of: Element>
-{
-    fun mutating_iterator(&self) -> IteratorType
+/// A sequence which can be traversed multiple times, nondestructively, and observed through an indexed subscript.
+pub category Collection<of: Element, Index> {
+    subscript(&self, Index) -> &Element
 }
 
-pub category Collection {
-
+/// A sequence which can be traversed multiple times, nondestructively, and mutated through an indexed subscript.
+pub category MutableCollection<of: Element, Index>: Collection<of: Element, Index> {
+    subscript(mut &self, Index) -> mut &Element
 }
 
-pub category IndexedCollection {
-
-}
-
-pub category Appendable<with: Element> {
+pub category Appendable<with: Element>: MutableCollection<of: Element> {
     fun append(mut &self, _ element: Element)
 
     fun append(mut &self, contents of other: Sequence) {
@@ -41,7 +43,7 @@ pub category Appendable<with: Element> {
     }
 }
 
-pub category Prependable<with: Element> {
+pub category Prependable<with: Element>: MutableCollection<of: Element> {
     fun prepend(mut &self, _ element: Element)
 
     fun prepend(mut &self, contents of other: Sequence) {

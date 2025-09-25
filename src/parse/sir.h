@@ -37,6 +37,9 @@ struct SirItem {
         SirItem_Function,
         SirItem_Class
     } tag;
+    union {
+
+    } data;
 };
 
 // A single source unit of a Strawberry module.

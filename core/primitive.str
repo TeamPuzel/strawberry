@@ -15,14 +15,14 @@ pub type Decimal = #Decimal
 /// A primitive type representing an unsigned integer of a specified bit size.
 /// The layout is conventional for the platform byte order.
 /// The default size is not the pointer size but the conventional integer size for the target.
-pub type UInt<const size: Integer = #default_int_size()> = #UInt<size>
+pub type UInt<const _ size: Integer = #default_int_size()> = #UInt<size>
 
 /// A primitive type representing a signed two's complement integer of a specified bit size.
 /// The layout is conventional for the platform byte order.
 /// The default size is not the pointer size but the conventional integer size for the target.
 ///
 /// If a different signedness representation is desired it should be implemented as a separate type.
-pub type Int<const size: Integer = #default_int_size()> = #Int<size>
+pub type Int<const _ size: Integer = #default_int_size()> = #Int<size>
 
 /// The conventional pointer sized unsigned integer for the target.
 pub type USize = UInt<#default_ptr_size()>
@@ -32,6 +32,18 @@ pub type ISize = Int<#default_ptr_size()>
 
 pub type Byte = UInt<#default_byte_size()>
 
+pub type Int8   = Int<8>
+pub type Int16  = Int<16>
+pub type Int32  = Int<32>
+pub type Int64  = Int<64>
+pub type Int128 = Int<128>
+
+pub type UInt8   = UInt<8>
+pub type UInt16  = UInt<16>
+pub type UInt32  = UInt<32>
+pub type UInt64  = UInt<64>
+pub type UInt128 = UInt<128>
+
 /// A primitive type representing a fixed point decimal type, and the default type for decimals.
 ///
 /// In the Strawberry Programming Language fixed point is preferred over floating point as one of
@@ -40,11 +52,19 @@ pub type Byte = UInt<#default_byte_size()>
 /// The language must be abstract enough to lower most code even to 8 bit computers.
 ///
 /// The default sizing is derived from the default integer size for the platform and split in half.
-pub struct Fixed<const size: Integer = #default_int_size(), const decimal: Integer = size / 2> {
+pub struct Fixed<const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2> {
 
 }
 
-pub struct Fixed(const size: Integer = #default_int_size(), const decimal: Integer = size / 2) {
+pub struct Fixed(const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2) {
+
+}
+
+pub struct Float<const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2> {
+
+}
+
+pub struct Float(const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2) {
 
 }
 

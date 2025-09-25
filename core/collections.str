@@ -25,12 +25,12 @@ pub category MutableSequence<of: Element, Iter> where Iter: Iterator<of: mut &El
 
 /// A sequence which can be traversed multiple times, nondestructively, and observed through an indexed subscript.
 pub category Collection<of: Element, Index> {
-    subscript(&self, Index) -> &Element
+    subscript fun get(&self, at index: Index) -> Element
 }
 
 /// A sequence which can be traversed multiple times, nondestructively, and mutated through an indexed subscript.
 pub category MutableCollection<of: Element, Index>: Collection<of: Element, Index> {
-    subscript(mut &self, Index) -> mut &Element
+    subscript fun set(self, at index: Index, value: Element)
 }
 
 pub category Appendable<with: Element>: MutableCollection<of: Element> {

@@ -46,6 +46,10 @@ typedef enum TokenTag : i16 {
     // The semicolon is not used much and is generally bad practice but it is included as a way
     // of combining multiple statements on a single line, so it is reserved as its own token.
     Token_Semicolon,
+    // The at symbol, used for annotations.
+    Token_At,
+    // The pound symbol, used for intrinsics.
+    Token_Pound,
     // Any sequence of symbols which does not fall into other token categories.
     // Notably this includes keywords, because keywords are not reserved, they only take precedence contextually.
     // It is up to the syntax tree assembly to resolve keywords with least possible pollution.

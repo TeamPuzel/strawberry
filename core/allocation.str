@@ -8,10 +8,6 @@ pub struct Pointer<Pointee> {
 
 }
 
-pub struct NullablePointer<Pointee> {
-
-}
-
 pub struct MemoryLayout<of: T> {
     fun size() -> Integer {
         #size_of<T>()
@@ -40,4 +36,8 @@ pub unsafe category Allocator<Address, Layout, error: Error = Never> {
     unsafe fun deallocate(&self, _ address: Address, layout: Layout)
     unsafe fun grow(&self, _ address: Address, old_layout: Layout, new_layout: Layout) throws Error -> Address
     unsafe fun shrink(&self, _ address: Address, old_layout: Layout, new_layout: Layout) throws Error -> Address
+}
+
+pub struct Box<Inner> {
+
 }

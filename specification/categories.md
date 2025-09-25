@@ -1,7 +1,9 @@
 # Categories for the Strawberry Programming Language 🍓
 
 The intention of this document is to specify the semantics of categories as a language construct in a way
-that avoids unsound behavior or devolving into an unconstrained template system which can't be introspected by itself.
+that avoids unsound behavior or devolving into an unconstrained template system which can't be introspected by themselves.
+
+## Motivation
 
 Categories derive from Haskell typeclasses, Swift protocols, Rust traits and C++ templates, attempting to find
 a good balance between expressiveness and clarity.
@@ -95,11 +97,11 @@ Categories can derive defaults in terms of themselves.
 ```
 category Add {
     operator + fun add(&self, to other: &Self) -> Self
-    operator += fun(mut &self, other: &Self)
+    operator += fun add_assign(mut &self, other: &Self)
 }
 
 extend Add {
-    pub operator += fun(mut &self, other: &Self) {
+    pub operator += fun add_assign(mut &self, other: &Self) {
         self = self + other
     }
 }
@@ -110,7 +112,7 @@ This can be simplified to an inline form.
 ```
 category Add {
     operator + fun add(&self, to other: &Self) -> Self
-    operator += fun(mut &self, other: &Self) {
+    operator += fun add_assign(mut &self, other: &Self) {
         self = self + other
     }
 }
@@ -131,7 +133,7 @@ category Add {
 extend Add {
     // This implementation can't be overriden because it is not part of the specification.
     // It is purely derived functionality in terms of the category.
-    pub operator += fun(mut &self, other: &Self) {
+    pub operator += fun add_assign(mut &self, other: &Self) {
         self = self + other
     }
 }

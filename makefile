@@ -8,3 +8,6 @@ setup:
 
 build:
 	@cd build; make
+
+cloc:
+	cloc . --force-lang="swift,str"

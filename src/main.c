@@ -86,6 +86,10 @@ void print_token(File file, Token token) {
             fprintf(file, "Colon\n"); break;
         case Token_Semicolon:
             fprintf(file, "Semicolon\n"); break;
+        case Token_At:
+            fprintf(file, "At\n"); break;
+        case Token_Pound:
+            fprintf(file, "Pound\n"); break;
         case Token_Ident:
             fprintf(file, "Ident(%.*s)\n", token.count, token.data); break;
         case Token_Comment:

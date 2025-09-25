@@ -27,6 +27,7 @@ static inline bool string_slice_to_literal_match(
     u16 count, const char * data, u16 pattern_count, const char * pattern_data
 ) {
     if (count < pattern_count) return false;
+
     for (size_t i = 0; i < pattern_count; i += 1) {
         if (data[i] != pattern_data[i]) return false;
     }
@@ -68,6 +69,10 @@ Token tokenize(const char ** source, const char * end) {
         CONSUME(1); YIELD(Colon);
     } else if (IS(';')) {
         CONSUME(1); YIELD(Semicolon);
+    } else if (IS('@')) {
+        CONSUME(1); YIELD(At);
+    } else if (IS('#')) {
+        CONSUME(1); YIELD(Pound);
     } else if (ARE("//")) {
         CONSUME(2);
 

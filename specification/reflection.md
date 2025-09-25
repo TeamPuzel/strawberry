@@ -28,7 +28,6 @@ struct Point<T> {
 }
 ```
 
-
 ## Meta types
 
 The following types are primitive to the language:

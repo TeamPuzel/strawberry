@@ -1,16 +1,16 @@
 module core.draw
 
 pub category Plane {
-    fun get(&self, x: Int, y: Int) -> Color
+    subscript fun get(&self, x: Int, y: Int) -> Color
+}
+
+pub category MutablePlane: Plane {
+    subscript fun set(mut &self, x: Int, y: Int, color: Color)
 }
 
 pub category SizedPlane: Plane {
     fun width(&self) -> Int
     fun height(&self) -> Int
-}
-
-pub category MutablePlane: Plane {
-    fun set(&mut self, x: Int, y: Int, color: Color)
 }
 
 pub category PrimitivePlane: Plane {
@@ -32,8 +32,14 @@ pub struct PlaneSlice<Inner> where Inner: Plane {
 }
 
 extend PlaneSlice: Plane {
-    pub fun get(&self, x: Int, y: Int) -> Color {
+    pub subscript fun get(&self, x: Int, y: Int) -> Color {
         self.inner.get(x: x + self.x, y: y + self.y)
+    }
+}
+
+extend PlaneSlice: MutablePlane where Inner: MutablePlane {
+    pub subscript fun set(mut &self, x: Int, y: Int, color: Color) {
+        self.inner.set(x: x + self.x, y: y + self.y, color: color)
     }
 }
 
@@ -44,11 +50,5 @@ extend PlaneSlice: SizedPlane where Inner: SizedPlane {
 
     pub fun height(&self) -> Int {
         self.height
-    }
-}
-
-extend PlaneSlice: MutablePlane where Inner: MutablePlane {
-    pub fun set(mut &self, x: Int, y: Int, color: Color) {
-        self.inner.set(x: x + self.x, y: y + self.y, color: color)
     }
 }

@@ -13,6 +13,27 @@
 // IO will go through this layer to have one place to change when porting the code, since some
 // platforms still have these concepts just with a different API and it would be silly to rewrite all of it for them.
 
+static inline void * c_alloc_alloc(void * self, size_t size) {
+    return malloc(size);
+}
+
+static inline void * c_alloc_realloc(void * self, void * ptr, size_t size) {
+    return realloc(ptr, size);
+}
+
+static inline void c_alloc_free(void * self, void * ptr) {
+    free(ptr);
+}
+
+static inline Allocator * c_alloc() {
+    static Allocator alloc = {
+        .alloc = c_alloc_alloc,
+        .realloc = c_alloc_realloc,
+        .free = c_alloc_free
+    };
+    return &alloc;
+}
+
 void panic(const char * reason) {
     fprintf(stderr, "panic: %s", reason);
     exit(ERROR_CODE_PANIC);
@@ -108,36 +129,115 @@ void print_token(File file, Token token) {
 }
 
 void print_ast(File file, Ast ast) {
+    for (size_t i = 0; i < ast.decls.count; i += 1) {
+        AstDecl * decl = &ast.decls.data[i];
 
+        switch (decl->tag) {
+            case AstDecl_Module:
+                fprintf(file, "Module { name: %s }\n", decl->data.module.name); break;
+            case AstDecl_Use:
+                fprintf(file, "Use { name: %s, as: %s }\n",
+                    decl->data.use.name, decl->data.use.as ? decl->data.use.as : "null"
+                ); break;
+            case AstDecl_Structure:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Enumeration:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Category:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Extension:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Class:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Constant:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_StaticValue:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_Function:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_TypeAlias:
+                fprintf(file, "Function {}\n"); break;
+            case AstDecl_CategoryAlias:
+                fprintf(file, "Function {}\n"); break;
+          break;
+        }
+    }
+}
+
+void print_parser_diagnostics(File file, Source source, AstParseDiagnosticArray diagnostics) {
+    for (size_t i = 0; i < diagnostics.count; i += 1) {
+        AstParseDiagnostic * diagnostic = &diagnostics.data[i];
+
+        const char * severity_string;
+        const char * severity_color;
+        switch (diagnostic->severity) {
+            case AstParseDiagnosticSeverity_Note:
+                severity_string = "note";
+                severity_color  = "\033[34m"; // Blue.
+                break;
+            case AstParseDiagnosticSeverity_Warning:
+                severity_string = "warning";
+                severity_color  = "\033[33m"; // Yellow.
+                break;
+            case AstParseDiagnosticSeverity_Error:
+                severity_string = "error";
+                severity_color  = "\033[31m"; // Red.
+                break;
+        }
+
+        fprintf(file, "%s:%u:%u: %s%s\033[0m: %s\n\n",
+            diagnostic->first_token.source_id,
+            diagnostic->first_token.line,
+            diagnostic->first_token.span_start,
+            severity_color,
+            severity_string,
+            diagnostic->message
+        );
+    }
 }
 
 // Token stream --------------------------------------------------------------------------------------------------------
 
 // A simple token stream which holds an entire source unit in memory.
-typedef struct InMemoryTokenStream {
-    TokenStream interface;
+typedef struct InMemoryTokenStream { TokenStream interface;
+    // The source file span.
     Source source;
+    // The unique identifier of the source.
+    const char * source_id;
+    // The cursor where the next poll will start.
     const char * cursor;
+    // The line the cursor is currently within.
+    u32 line;
 } InMemoryTokenStream;
 
 TokenWithProvenance in_memory_token_stream_next(void * _self) {
     InMemoryTokenStream * self = _self;
+
+    const char * previous_cursor = self->cursor;
     Token token = tokenize(&self->cursor, self->source.end);
-    return (TokenWithProvenance) {
+
+    TokenWithProvenance result = {
         .token = token,
-        .source_id = "todo",
-        .source_offset = 0,
-        .source_count = 0
+        .source_id = self->source_id,
+        .line = self->line,
+        .span_start = previous_cursor - self->source.start,
+        .span_count = self->cursor - previous_cursor
     };
+
+    if (token.tag == Token_LineEnd) self->line += 1;
+
+    return result;
 }
 
-InMemoryTokenStream in_memory_token_stream(Source source) {
+InMemoryTokenStream in_memory_token_stream(Source source, const char * source_id) {
     return (InMemoryTokenStream) {
         .interface = {
             .next = in_memory_token_stream_next
         },
         .source = source,
-        .cursor = source.start
+        .source_id = source_id,
+        .cursor = source.start,
+        .line = 1
     };
 }
 
@@ -158,6 +258,7 @@ static struct Args {
 
     const char * source_path;
     const char * output_path;
+
     OptimizationMode optimization_mode;
 } args = {
     .source_path = "main.str",
@@ -169,8 +270,6 @@ typedef struct Args Args;
 
 // Writes the usage guide to standard output.
 void print_help(void) {
-    // TODO(?, optimization): Keep these snippets of text interface as one big string in the binary
-    // and write by slicing from it, to avoid duplication of strings.
     fprintf(stdout,
         "Usage: strawberry [command] [options...]? [root]?\n\n"
 
@@ -199,34 +298,34 @@ void print_help(void) {
 }
 
 int main(int argc, char ** argv) {
-    Allocator alloc = c_alloc();
+    Allocator * alloc = c_alloc();
 
     if (argc >= 2) {
         args.command = argv[1];
 
         if (string_eq(args.command, "init")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "build")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "run")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "execute")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "test")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "format")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "version")) {
-            printf(VERSION_STRING "\n");
+            fprintf(stdout, VERSION_STRING "\n");
         } else if (string_eq(args.command, "targets")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "help")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "commands")) {
-
+            fprintf(stdout, "unimplemented");
         } else if (string_eq(args.command, "tokenize")) {
             File entry = open_source_file(args.source_path);
-            Source source = read_source_file_to_end(&alloc, entry);
+            Source source = read_source_file_to_end(alloc, entry);
             close_source_file(entry);
 
             const char * cursor = source.start;
@@ -240,21 +339,23 @@ int main(int argc, char ** argv) {
             Allocator_free(&alloc, source.start);
         } else if (string_eq(args.command, "parse")) {
             File entry = open_source_file(args.source_path);
-            Source source = read_source_file_to_end(&alloc, entry);
+            Source source = read_source_file_to_end(alloc, entry);
             close_source_file(entry);
 
-            InMemoryTokenStream stream = in_memory_token_stream(source);
-            Ast ast = parse_syntax_tree(&alloc, (TokenStream *) &stream);
+            InMemoryTokenStream stream = in_memory_token_stream(source, args.source_path);
+            AstParseResult ast_result = parse_syntax_tree(alloc, (TokenStream *) &stream);
 
-            print_ast(stdout, ast);
+            print_parser_diagnostics(stderr, source, ast_result.diagnostics);
+            print_ast(stdout, ast_result.ast);
 
             Allocator_free(&alloc, source.start);
         } else if (string_eq(args.command, "ir")) {
-
+            fprintf(stdout, "unimplemented");
         }
+
+        return ERROR_CODE_SUCCESS;
     } else {
         print_help();
         return ERROR_CODE_INVALID_USE;
     }
-    return ERROR_CODE_SUCCESS;
 }

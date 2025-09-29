@@ -8,7 +8,7 @@ typedef struct BitArray {
     union {
         void * allocated;
         size_t local;
-    };
+    } data;
     size_t count;
 } BitArray;
 

@@ -24,28 +24,6 @@ static inline void Allocator_free(void * self, void * ptr) {
     ((Allocator *) self)->free(self, ptr);
 }
 
-// Default C allocator -------------------------------------------------------------------------------------------------
-
-static inline void * c_alloc_alloc(void * self, size_t size) {
-    return malloc(size);
-}
-
-static inline void * c_alloc_realloc(void * self, void * ptr, size_t size) {
-    return realloc(ptr, size);
-}
-
-static inline void c_alloc_free(void * self, void * ptr) {
-    free(ptr);
-}
-
-static inline Allocator c_alloc() {
-    return (Allocator) {
-        .alloc = c_alloc_alloc,
-        .realloc = c_alloc_realloc,
-        .free = c_alloc_free
-    };
-}
-
 // Arena allocator -----------------------------------------------------------------------------------------------------
 
 // typedef struct ArenaAllocator {

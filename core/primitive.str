@@ -73,7 +73,7 @@ pub enum Optional<Inner> {
     Some(Inner)
 
     pub implicit init(_ value: Inner) {
-        self = value
+        self = .Some(value)
     }
 }
 

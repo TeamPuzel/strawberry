@@ -11,145 +11,112 @@
 typedef struct TokenWithProvenance {
     // The token itself.
     Token token;
-    // An identifier representing the origin of the token.
+    // A unique identifier representing the source unit of the token.
     const char * source_id;
-    // The starting index of the token origin.
-    u32 source_offset;
-    // The unit count describing the origin span.
-    u32 source_count;
+    // The line number in the source unit.
+    u32 line;
+    // The start of the span within the source unit.
+    u32 span_start;
+    // The count of characters in the span.
+    u32 span_count;
 } TokenWithProvenance;
+DEFINE_ARRAY(TokenWithProvenance)
 
 // An interface for pulling in tokens as needed.
 typedef struct TokenStream {
     TokenWithProvenance (*next)(void * self);
 } TokenStream;
 
-typedef struct AstExpr {
+static inline TokenWithProvenance TokenStream_next(void * self) {
+    return ((TokenStream *) self)->next(self);
+}
 
-} AstExpr;
-
-typedef enum AstInlineModifier {
-    AstInlineModifier_Unspecified,
-    AstInlineModifier_Always,
-    AstInlineModifier_Never
-} AstInlineModifier;
-
-typedef enum AstVisibilityModifier {
-    AstVisibilityModifier_Unspecified,
-    AstVisibilityModifier_Public,
-    AstVisibilityModifier_ModulePublic,
-    AstVisibilityModifier_Private,
-    AstVisibilityModifier_Protected
-} AstVisibilityModifier;
-
-// A generic declaration parameter.
-typedef struct AstGeneric {
-    // Determines if the generic declares a constant parameter or type parameter
-    bool is_constant;
-    // Determines if a default expression is present.
-    bool has_default_expr;
-    // Determines if the parameter is exported as a constant or alias from the parameterized namespace.
-    AstVisibilityModifier visibility;
-    // The default expression if present.
-    AstExpr default_expr;
-    // For a constant parameter it determines the type.
-    AstExpr type_expr;
-    // For a constant parameter it determines the public argument label.
-    const char * label;
-    // Determines the inner and export names.
-    const char * name;
-} AstGeneric;
-
-// A generic list specification associated with a declaration.
-typedef struct AstGenericList {
-    AstGeneric * parameters;
-    size_t count;
-} AstGenericList;
-
-// A callable argument.
-typedef struct AstArgument {
-    // Determines if a default expression is present.
-    bool has_default_expr;
-    // The default expression if present.
-    AstExpr default_expr;
-    // Determines the type of the argument.
-    AstExpr type_expr;
-    // Determines the public argument label.
-    const char * label;
-    // Determines the argument binding name.
-    const char * namel;
-} AstArgument;
-
-// An argument list associated with a callable signature.
-typedef struct AstArgumentList {
-    AstArgument * arguments;
-    size_t count;
-} AstArgumentList;
-
-typedef struct AstNode AstNode;
-struct AstNode {
-    enum AstNodeTag {
-        AstNode_Compound,
-        AstNode_Function,
-        AstNode_Type,
-        AstNode_Structure,
-        AstNode_Enumeration,
-        AstNode_Category,
-        AstNode_Class,
-        AstNode_Binding,
-        AstNode_Use,
-        AstNode_Module,
-        AstNode_Attribute
+typedef struct AstDecl AstDecl;
+DECLARE_ARRAY(AstDecl)
+struct AstDecl {
+    enum AstDeclTag {
+        AstDecl_Module,
+        AstDecl_Use,
+        AstDecl_Structure,
+        AstDecl_Enumeration,
+        AstDecl_Category,
+        AstDecl_Extension,
+        AstDecl_Class,
+        AstDecl_Constant,
+        AstDecl_StaticValue,
+        AstDecl_Function,
+        AstDecl_TypeAlias,
+        AstDecl_CategoryAlias
     } tag;
     union {
         struct {
-            AstNode * children;
-            u32 count;
-        } compound;
-        struct {
+            // The name of the declared module.
             const char * name;
-            AstVisibilityModifier visibility;
-            AstInlineModifier inlining;
-            bool is_async;
-        } function;
+        } module;
         struct {
-
-        } type;
+            // The name of the imported declaration.
+            const char * name;
+            // If present, renames the imported declaration.
+            const char * as;
+        } use;
         struct {
 
         } structure;
         struct {
-            const char * name;
-            AstVisibilityModifier visibility;
-            AstGenericList generics;
-            AstExpr generic;
-            bool is_open;
+
         } enumeration;
         struct {
 
         } category;
         struct {
 
+        } extension;
+        struct {
+
         } class;
         struct {
 
-        } binding;
+        } constant;
         struct {
 
-        } use;
+        } static_value;
         struct {
 
-        } module;
+        } function;
         struct {
 
-        } attribute;
+        } type_alias;
+        struct {
+
+        } category_alias;
     } data;
 };
+IMPLEMENT_ARRAY(AstDecl)
 
 // The top level structure containing a syntax tree.
 typedef struct Ast {
-    AstNode * root;
+    AstDeclArray decls;
 } Ast;
+
+typedef struct AstParseDiagnostic {
+    enum AstParseDiagnosticSeverity {
+        AstParseDiagnosticSeverity_Note,
+        AstParseDiagnosticSeverity_Warning,
+        AstParseDiagnosticSeverity_Error
+    } severity;
+    // Initial token of the diagnostic span.
+    TokenWithProvenance first_token;
+    // Final token of the diagnostic span.
+    TokenWithProvenance last_token;
+    // The diagnostic message.
+    const char * message;
+} AstParseDiagnostic;
+DEFINE_ARRAY(AstParseDiagnostic)
+
+typedef struct AstParseResult {
+    Ast ast;
+    AstParseDiagnosticArray diagnostics;
+} AstParseResult;
 
 // The standard parsing procedure. It operates on a stream of tokens, assembling the tree and pulling in new tokens
 // as needed. Once tokens run out the tree is returned. It's eager because the way the language is designed there
@@ -157,6 +124,6 @@ typedef struct Ast {
 //
 // The allocator is used to allocate nodes of the tree. They can be freed individually but the recommended
 // approach is to use arenas.
-Ast parse_syntax_tree(Allocator * alloc, TokenStream * tokens);
+AstParseResult parse_syntax_tree(Allocator * alloc, TokenStream * tokens);
 
 #endif

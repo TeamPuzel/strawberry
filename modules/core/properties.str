@@ -3,14 +3,19 @@ module core
 /// A value which can be implicitly copied in place of destructive move.
 ///
 /// Copyability is inherent, any type which satisfies the requirements is copyable.
-/// Implementing it manually is unsafe.
+/// Implementing it manually is unsafe and almost certainly unsound.
 pub unsafe inherent category Copyable
 where
-     Self: !Deinitialized,
+     Self: not Deinitializable,
     (Self::Components: Copyable)...
 
 /// Allow copyable types to be copied implicitly.
+///
+/// This extension is safe because it's constrained by copyability restrictions.
 unsafe extend Any: #ImplicitlyCopyable where Self: Copyable
+
+/// A value which has deinitialization logic.
+pub unsafe inherent category Deinitializable where Self::deinit
 
 /// A value which can be moved across synchronization boundaries.
 pub unsafe inherent category Sendable

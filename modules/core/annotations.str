@@ -1,0 +1,82 @@
+module core
+//? The following standard set of marker annotations is useful for target backends and reflection.
+//? These are mainly hints as their usage is very contextual to the backend.
+//? Most of these are specific to native targets and a linear memory model.
+//?
+//? Generally, backends should be as fault tolerant as possible when applying such hints.
+//? It would be unwise for any backend to fail unnecessarily as that decreases code portability.
+
+/// Annotates a declaration as a hint for the section name where it should be placed
+/// if applicable. This is generally used by target backends which perform a linking step.
+pub annotation LinkSection {
+    pub let name: String
+    
+    pub init(_ name: String) {
+        self.name = name
+    }
+}
+
+/// Annotates a declaration as a hint for its minimum alignment. This is very rarely useful
+/// and is generally only relevant to linear memory backends.
+pub annotation Alignment where Self.Type == .Struct {
+    pub let bytes: Integer
+    
+    pub init(of bytes: Integer) {
+        self.bytes = bytes
+    }
+}
+
+/// Annotates a declaration, generally a function, as a foreign export hint,
+/// making it accessible externally in some form relevant to the target backend.
+///
+/// Unlike external declarations this is not unsafe, as the language can't protect itself
+/// from a dangerous environment anyway. It is the responsibility of the environment
+/// to interact with the exposed interface safely, which is highly target backend specific.
+pub annotation Export {
+    pub init()
+}
+
+/// Annotates a function as a foreign import hint, asking the backend to
+/// discover the implementation for this function in some form relevant to the target backend.
+///
+/// An additional library name hint can be provided which the backend can use to try and link
+/// the function in some way.
+///
+/// This annotation is highly unsafe as most targets don't have any safety system to ensure
+/// the signature, calling convention or other esoteric requirements are met.
+pub unsafe annotation Extern where Self.Type == .Function {
+    pub let library: String? = .None
+    
+    pub init()
+    pub init(library: String) {
+        self.library = library
+    }
+}
+
+/// Annotates a function with a hint to use a specific calling convention.
+/// This is very target backend specific and could just be ignored in meaningless cases.
+pub annotation Convention where Self.Type == .Function {
+    pub let kind: Kind
+    
+    pub init(_ kind: Kind) {
+        self.kind = kind
+    }
+    
+    pub enum Kind {
+        Automatic
+        Strawberry
+        C
+        Fast
+        PreserveMost
+        PreserveAll
+        PreserveNone
+        Swift
+        SwiftTail
+    }
+}
+
+/// Annotates the entry point to the program for conventional binary targets.
+/// The semantic of program entry depend on the target backend.
+pub annotation Entry {
+    pub init()
+}

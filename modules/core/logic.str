@@ -1,8 +1,8 @@
 module core
 
 pub enum Boolean {
-    False
     True
+    False
 }
 
 extend Boolean: Equatable {

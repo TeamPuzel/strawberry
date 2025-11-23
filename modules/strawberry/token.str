@@ -1,5 +1,0 @@
-module strawberry
-
-pub enum Token {
-    
-}

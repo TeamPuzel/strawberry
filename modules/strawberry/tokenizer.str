@@ -1,0 +1,45 @@
+module strawberry
+
+pub enum Token {
+    /// A literal sequence of text or digits starting with text.
+    Ident(String)
+    /// A literal sequence of symbols which does not include text or digits.
+    Symbol(String)
+    /// A literal sequence starting with an arabic digit.
+    /// The sequence allows non trailing single underscores or single dots as well as letters but
+    /// does not terminate with a symbol.
+    Number(String)
+    /// A literal character enclosed in single-quotes.
+    Character(String)
+    /// A literal single-line string enclosed in double-quotes.
+    String(String)
+    /// A literal piece of a multi-line string started by a backslash and space.
+    MultilineString(String)
+
+    /// A source comment starting with two slashes and a selector followed by a space.
+    Comment(selector: String, content: String)
+
+    /// A count of spaces.
+    /// Can never be a tab or any other kind of whitespace.
+    Whitespace(count: UInt)
+
+    /// A line ending.
+    /// Can never be a non-standard character sequence that doesn't correspond to the encoding newline.
+    LineEnd
+
+    /// Commas are general separators and have no symbolic meaning in the language.
+    Comma
+    /// Colons are special and have no symbolic meaning in the language.
+    Colon
+    /// Semicolons are statement chain separators and have no symbolic meaning in the language.
+    Semicolon
+    /// Pounds designate primitive selectors and have no symbolic meaning in the language.
+    Pound
+
+    LeftParen
+    RightParen
+    LeftCurly
+    RightCurly
+    LeftBracket
+    RightBracket
+}

@@ -1,0 +1,6 @@
+module strawberry.backend.llvm
+
+@Backend
+pub class LlvmBackend: Backend {
+    
+}

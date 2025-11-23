@@ -1,0 +1,18 @@
+module core
+
+pub category Sequence<of: Element> {
+    fun for(self, each: (element: Element) -> ())
+    fun for(&self, each: (element: &Element) -> ())
+}
+
+pub category MutableSequence<of: Element>: Sequence<of: Element> {
+    fun for(self, each: (mut element: &Element) -> ())
+}
+
+pub category Collection<of: Element, Index> {
+    subscript fun get(&self, at index: Index) -> Element
+}
+
+pub category MutableCollection<of: Element, Index>: Collection<of: Element, Index> {
+    subscript fun set(self, at index: Index, value: Element)
+}

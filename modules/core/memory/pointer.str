@@ -1,0 +1,5 @@
+module core.memory
+
+pub struct Pointer<Pointee> {
+    
+}

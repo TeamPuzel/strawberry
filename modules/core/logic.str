@@ -1,0 +1,12 @@
+module core
+
+pub enum Boolean {
+    False
+    True
+}
+
+extend Boolean: Equatable {
+    pub infix operator == fun equal(&self, to other: &Other) -> Boolean {
+        
+    }
+}

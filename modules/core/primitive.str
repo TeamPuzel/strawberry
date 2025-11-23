@@ -1,0 +1,125 @@
+module core
+// The primitives of the strawberry core library are declared much like any other type
+// but they forward to the compiler for a lot of the implementation, some for efficiency reasons
+// and others because they are introducing truly fundamental concepts such as literals.
+
+/// A caseless enum which can never be constructed and therefore marks something as impossible to exist.
+pub enum Never
+
+/// A literal type representing unprocessed arbitrary precision integers like ones formed from a literal.
+pub type Integer = #Integer
+
+/// A literal type representing unprocessed arbitrary precision decimals like ones formed from a literal.
+pub type Decimal = #Decimal
+
+/// A numeric type representing an unsigned integer of a specified bit size.
+/// The layout is conventional for the platform byte order.
+/// The default size is not the pointer size but the conventional integer size for the target.
+pub struct UInt<const _ size: Integer = #default_int_size()> {
+    let value: #Int(size)
+    
+    init(value: #Int(size)) {
+        self.value = value
+    }
+    
+    pub infix operator + fun add(self, _ other: Self) -> Self {
+        Self(#add(self.value, other.value))
+    }
+    
+    pub infix operator - fun subtract(self, _ other: Self) -> Self {
+        Self(#sub(self.value, other.value))
+    }
+    
+    pub infix operator * fun multiply(self, with other: Self) -> Self {
+        Self(#umul(self.value, other.value))
+    }
+    
+    pub infix operator / fun divide(self, by other: Self) -> Self {
+        Self(#udiv(self.value, other.value))
+    }
+}
+
+/// A numeric type representing a signed two's complement integer of a specified bit size.
+/// The layout is conventional for the platform byte order.
+/// The default size is not the pointer size but the conventional integer size for the target.
+///
+/// If a different signedness representation is desired it should be implemented as a separate type.
+pub struct Int<const _ size: Integer = #default_int_size()> {
+    let value: #Int<size>
+    
+    init(value: #Int<size>) {
+        self.value = value
+    }
+    
+    pub infix operator + fun add(self, _ other: Self) -> Self {
+        Self(#add(self.value, other.value))
+    }
+    
+    pub infix operator - fun subtract(self, _ other: Self) -> Self {
+        Self(#sub(self.value, other.value))
+    }
+    
+    pub infix operator * fun multiply(self, with other: Self) -> Self {
+        Self(#smul(self.value, other.value))
+    }
+    
+    pub infix operator / fun divide(self, by other: Self) -> Self {
+        Self(#sdiv(self.value, other.value))
+    }
+}
+
+/// The conventional pointer sized unsigned integer for the target.
+pub type USize = UInt<#default_ptr_size()>
+
+/// The conventional pointer sized signed integer for the target.
+pub type ISize = Int<#default_ptr_size()>
+
+pub type Int8   = Int<8>
+pub type Int16  = Int<16>
+pub type Int32  = Int<32>
+pub type Int64  = Int<64>
+pub type Int128 = Int<128>
+
+pub type UInt8   = UInt<8>
+pub type UInt16  = UInt<16>
+pub type UInt32  = UInt<32>
+pub type UInt64  = UInt<64>
+pub type UInt128 = UInt<128>
+
+/// A numeric type representing a fixed point decimal value, and the default type for decimals.
+///
+/// In the Strawberry Programming Language fixed point is preferred over floating point as one of
+/// the primary goals of the language is simplicity and portability. Fixed point is just a slightly
+/// different interpretation of normal integer arithmetic so it still works even on exotic or old hardware.
+///
+/// The default sizing is derived from the default integer size for the platform and split in half.
+pub struct Fixed<const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2> {
+
+}
+
+/// A numeric type representing a floating point decimal value.
+///
+/// This type should rarely be used in normal code, however modern hardware tends to use them
+/// all over the place. In that sense it's a compatibility type.
+///
+/// Floating point numbers are difficult to use and due to their invariance to both fixed point
+/// and integers they require explicit conversions everywhere. That's an intentional decision
+/// different to most languages which implcitly allow unsound logic making it trivial to
+/// introduce bugs such as loss of precision over time in simulations.
+pub struct Float<const _ size: Integer = #default_float_size(), const _ decimal: Integer = size / 2> {
+
+}
+
+
+pub enum Optional<Inner> {
+    None
+    Some(Inner)
+
+    pub implicit init(_ value: Inner) {
+        self = .Some(value)
+    }
+}
+
+extend Any {
+    pub postfix type operator ? = Optional<Self>
+}

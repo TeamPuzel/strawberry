@@ -1,35 +1,85 @@
 module core
 
-/// A sequence which supports by-value iteration of all its elements.
-pub category OwningSequence<of: Element> {
-    fun for<E>(self, each: (element: Element) throws E -> ()) throws E
+//! Required for concrete collection allocation.
+import core.memory
+
+/// A type which can supply a for loop with borrowed values.
+pub category BorrowingIterator<of: Element> {
+    fun next(mut &self) -> (&Element)?
+}
+
+/// A type which can supply a for loop with mutably referenced values.
+pub category MutatingIterator<of: Element>: Iterator<of: Element> {
+    fun next(mut &self) -> (mut &Element)?
+}
+
+/// A type which can supply a for loop with owned values.
+pub category ConsumingIterator<of: Element> {
+    fun next(mut &self) -> Element?
+}
+
+//- Iterator Properties ------------------------------------------------------------------------------------------------
+
+/// Communicate to the compiler that the type should be considered for borrowing loop syntax.
+extend BorrowingIterator: #BorrowingLoop(Element)
+
+/// Support implicitly converting borrowing sequences into their iterator.
+extend BorrowingIterator {
+    pub implicit init(_ &sequence: Sequence) {
+        sequence.iterator()
+    }
+}
+
+/// Communicate to the compiler that the type should be considered for mutating loop syntax.
+extend MutatingIterator: #MutatingLoop(Element)
+
+extend MutatingIterator {
+    pub implicit init(_ mut &sequence: MutableSequence) {
+        sequence.iterator()
+    }
+}
+
+/// Communicate to the compiler that the type should be considered for consuming loop syntax.
+extend ConsumingIterator: #ConsumingLoop(Element)
+
+extend ConsumingIterator {
+    pub implicit init(_ sequence: OwningSequence) {
+        sequence.iterator()
+    }
 }
 
 /// A sequence which allows borrowing iteration of all its elements.
-pub category Sequence<of: Element> {
-    fun for<E>(&self, each: (element: &Element) throws E -> ()) throws E
+pub category Sequence<of: Element, Iterator> where Iterator: BorrowingIterator<of: Element> {
+    fun iterator(&self) -> Iterator
 }
 
 /// A sequence which allows mutating iteration of all its elements.
-pub category MutableSequence<of: Element>: Sequence<of: Element> {
-    fun for<E>(self, each: (mut element: &Element) throws E -> ()) throws E
+pub category MutableSequence<of: Element, Iterator>: Sequence<of: Element>
+where
+    Iterator: MutatingIterator<of: Element>
+{
+    fun iterator(mut &self) -> Iterator
 }
 
-pub category OwningCollection<of: Element, Index> {
-    subscript fun get(&self, at index: Index) -> Element
+/// A sequence which supports consuming iteration of all its elements.
+pub category OwningSequence<of: Element, It> where Iterator: ConsumingIterator<of: Element> {
+    fun iterator(self) -> Iterator
 }
 
+/// A collection of indexed values which can be observed multiple times.
 pub category Collection<of: Element, Index> {
-    subscript fun get(&self, at index: Index) -> Element
+    subscript get(&self, at index: Index) -> &Element
 }
 
+/// A collection of indexed values which can be mutated multiple times.
 pub category MutableCollection<of: Element, Index>: Collection<of: Element, Index> {
-    subscript fun set(mut &self, at index: Index, value: Element)
+    subscript set(mut &self, at index: Index, element: Element)
+    subscript mut(mut &self, at index: Index, mutation: (mut &Element) -> ())
 }
 
-/// A value which can opaquely consume elements.
-@Experimental
-pub category Sink<of: Element, with: Exception = ()> {
+/// A type which can opaquely consume elements.
+@Experimental(because: "this feature may not prove useful")
+pub category Sink<of: Element, with: Exception = Never> {
     fun sink(mut &self, _ element: Element) throws Exception
     
     fun sink(mut &self, _ elements: Sequence<of: Element>) throws Exception {
@@ -37,15 +87,9 @@ pub category Sink<of: Element, with: Exception = ()> {
     }
 }
 
-pub struct Map<Inner, Mapping, Result>
-where 
-    Inner: Sequence,
-    Mapping: (element: Inner.Element) -> Result
-{
-    pub let mut inner: Inner
-    pub let mapping: Mapping
+/// The most common collection type, a homogeneous and dynamically sized array.
+pub struct Array<of: Element, allocator: Allocator = DefaultAllocator>: not Copyable where Allocator: Allocator {
+    let mut data: Pointer<to: Element>
+    let mut allocator: Allocator
     
-    fun for<E>(&self, each: (element: &Element) throws E -> ()) throws E {
-        for element in inner do 
-    }
 }

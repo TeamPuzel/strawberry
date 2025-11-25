@@ -16,7 +16,6 @@ pub fun todo() -> Never {
     panic("Not implemented.")
 }
 
-@Hidden
 @DefaultPanicHandler
 pub fun default_panic_handler() -> Never {
     #trap() // TODO: Implement a proper panic handler.

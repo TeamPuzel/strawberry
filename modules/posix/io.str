@@ -1,4 +1,10 @@
-module posix where #posix_conformant_libc()
+module posix
+//? A minimal implementation of POSIX file operations.
+//? It is not focused on completeness but rather a very small widely available subset
+//? which should be more portable across unix-like platforms.
+//?
+//? Efficient file IO is very platform specific so if that is desired a more optimized
+//? platform module should be used instead.
 
 /// A set of external declarations for the implementation of POSIX IO.
 object Platform {

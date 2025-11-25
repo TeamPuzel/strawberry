@@ -1,0 +1,7 @@
+module math
+
+pub struct Matrix<of: Element, width: Integer, height: Integer> {
+
+}
+
+pub type Vector<of: Element, count: Integer> = Matrix<of: Element, width: count, height: 1>

@@ -2,6 +2,8 @@ module core
 //? Annotations are compile time data structures which can be attached to declarations to provide
 //? meta functionality for frameworks or target backends.
 //?
+//? Unsafe annotations require the declaration to itself be unsafe.
+//?
 //? The following standard set of marker annotations is useful for tooling, target backends and reflection.
 //? These are mainly hints as their usage is very contextual to the backend.
 //? Most of these are specific to native targets and a linear memory model.
@@ -53,7 +55,7 @@ pub unsafe annotation Extern {
     
     pub init()
     
-    pub init(library: String, linkage: Linkage = .Unspecified) {
+    pub init(library: String, name: String? = .None, linkage: Linkage = .Unspecified) {
         self.library = library
         self.linkage = linkage
     }
@@ -103,11 +105,15 @@ pub annotation Entry {
 /// Annotates an experimental declaration which should not be used in production code.
 /// Can be used by tooling to try and warn about production usage of such declarations.
 pub annotation Experimental {
-    pub let reason: String? = .None
+    pub let reason: String = .None
     
-    pub init()
-    
-    pub init(reason: String) {
+    /// Provides a description conforming to the stylistic form "Because <reason>.".
+    ///
+    /// For example:
+    /// ```
+    /// @Experimental(because: "this feature may not prove useful")
+    /// ```
+    pub init(because reason: String) {
         self.reason = reason
     }
 }
@@ -118,4 +124,13 @@ pub annotation Experimental {
 /// show or hide such declarations so as not to pollute the experience with irrelevant details.
 pub annotation Hidden {
     pub init()
+}
+
+/// Annotates a declaration with a hint for tooling to suppress a specific lint or warning.
+pub annotation Allow {
+    pub let diagnostic: String
+    
+    pub init(_ diagnostic: String) {
+        self.diagnostic = diagnostic
+    }
 }

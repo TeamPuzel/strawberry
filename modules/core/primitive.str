@@ -1,16 +1,23 @@
 module core
-// The primitives of the strawberry core library are declared much like any other type
-// but they forward to the compiler for a lot of the implementation, some for efficiency reasons
-// and others because they are introducing truly fundamental concepts such as literals.
+//? The primitives of the strawberry core library are declared much like any other type
+//? but they forward to the compiler for a lot of the implementation, some for efficiency reasons
+//? and others because they are introducing truly fundamental concepts such as literals.
 
 /// A caseless enum which can never be constructed and therefore marks something as impossible to exist.
+///
+/// The properties of this type exist for all caseless enums but code should only use this one for clarity
+/// when describing unreachable state.
 pub enum Never
 
-/// A literal type representing unprocessed arbitrary precision integers like ones formed from a literal.
-pub type Integer = #Integer
+/// A numeric type representing unprocessed arbitrary precision integers like ones formed from a literal.
+pub struct Integer {
+    let value: #Integer(size)
+}
 
-/// A literal type representing unprocessed arbitrary precision decimals like ones formed from a literal.
-pub type Decimal = #Decimal
+/// A numeric type representing unprocessed arbitrary precision decimals like ones formed from a literal.
+pub struct Decimal {
+    let value: #Decimal(size)
+}
 
 /// A numeric type representing an unsigned integer of a specified bit size.
 /// The layout is conventional for the platform byte order.
@@ -94,7 +101,7 @@ pub type UInt128 = UInt<128>
 ///
 /// The default sizing is derived from the default integer size for the platform and split in half.
 pub struct Fixed<const _ size: Integer = #default_int_size(), const _ decimal: Integer = size / 2> {
-
+    
 }
 
 /// A numeric type representing a floating point decimal value.
@@ -107,12 +114,12 @@ pub struct Fixed<const _ size: Integer = #default_int_size(), const _ decimal: I
 /// different to most languages which implcitly allow unsound logic making it trivial to
 /// introduce bugs such as loss of precision over time in simulations.
 pub struct Float<const _ size: Integer = #default_float_size(), const _ decimal: Integer = #default_float_decimal()> {
-
+    let value: #Float(size, decimal)
 }
 
 /// A wrapper representing either the presence or absence of a value.
-//# TODO:
-//# [ ] Implement the collection category.
+//: TODO:
+//: [ ] Implement the collection category for optionals.
 pub enum Optional<Inner> {
     None
     Some(Inner)

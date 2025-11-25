@@ -1,6 +1,6 @@
 module strawberry
 
-/// A fundamental primitive unit of Strawberry source code.
+/// A fundamental, primitive unit of Strawberry source code.
 pub enum Token {
     /// A literal sequence of underscores, text or digits starting with text or an underscore.
     Identifier(literal: String)
@@ -45,6 +45,8 @@ pub enum Token {
     RightSquareBracket
 }
 
-pub fun tokenize(source: String) -> Sequence<of: Token> {
-    todo()
+pub object Tokenizer {
+    pub fun tokenize(source: String) -> Sequence<of: Token> {
+        todo()
+    }
 }

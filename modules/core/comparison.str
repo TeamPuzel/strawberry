@@ -64,9 +64,9 @@ extend Ordered {
 /// Partial equality is structural.
 extend (Element...): PartiallyEquatable where (Element: PartiallyEquatable)... {
     pub infix operator == fun equal(&self, to other: &Other) -> Boolean {
-        let (lhs...) = self
-        let (rhs...) = other
-        (lhs == rhs and)...
+        let (&lhs...) = self
+        let (&rhs...) = other
+        (lhs == rhs and ...)
     }
 }
 

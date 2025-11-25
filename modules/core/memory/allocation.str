@@ -1,0 +1,57 @@
+module core.memory
+
+/// A highly unsafe category which provides raw blocks of memory sufficient for allocating a type.
+///
+/// Memory operated on by allocators does not handle initialization or deinitialization.
+pub unsafe category Allocator<exception: Exception> {
+    /// Perform a new memory allocation.
+    unsafe fun allocate<T>(&self, count: USize = 1) throws Exception -> Pointer<to: T>
+    
+    /// Free a memory allocation.
+    unsafe fun deallocate<T>(&self, _ pointer: Pointer<to: T>, count: USize = 1)
+    
+    /// Resize an existing memory allocation preserving the bit-pattern of overlapping data.
+    unsafe fun reallocate<T>(&self, _ pointer: Pointer<to: T>, old_count: USize, new_count: USize) throws Exception -> Pointer<to: T> {
+        let new: Pointer<to: T> = unsafe try self.allocate(count: new_count)
+        for index in 0..<old_count do unsafe raw_copy(from: unsafe pointer[index], to: unsafe new[index])
+        unsafe self.deallocate(pointer, count: old_count)
+        new
+    }
+}
+
+/// The standard C memory interface implemented in terms of malloc, realloc and free.
+pub object LibcAllocator: Allocator<exception: AllocationFailure> {
+    @Convention(.C)
+    @Extern(library: "c")
+    unsafe fun malloc(size: USize) -> RawPointer
+    
+    @Convention(.C)
+    @Extern(library: "c")
+    unsafe fun free(RawPointer)
+    
+    @Convention(.C)
+    @Extern(library: "c")
+    unsafe fun realloc(RawPointer, new_size: USize) -> RawPointer
+    
+    pub unsafe fun allocate<T>(&self, count: USize = 1) throws Exception -> Pointer<to: T> {
+        if #size_of(T) == 0 then return .dangling
+        let new = unsafe malloc(size: count * #size_of(T))
+        if new != .null then unsafe new.bind() else throw AllocationFailure
+    }
+    
+    pub unsafe fun deallocate<T>(&self, _ pointer: Pointer<to: T>, count: USize = 1) {
+        if #size_of(T) == 0 then return
+        unsafe free(pointer.raw)
+    }
+    
+    pub unsafe fun reallocate<T>(&self, _ pointer: Pointer<to: T>, old_count: USize, new_count: USize) throws Exception -> Pointer<to: T> {
+        if #size_of(T) == 0 then return .dangling
+        let new = unsafe realloc(pointer.raw, new_size: new_count * #size_of(T))
+        if new != .null then unsafe new.bind() else throw AllocationFailure
+    }
+    
+    pub object AllocationFailure
+}
+
+/// The default allocator.
+pub type DefaultAllocator = LibcAllocator

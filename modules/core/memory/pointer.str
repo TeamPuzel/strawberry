@@ -1,5 +1,90 @@
 module core.memory
 
-pub struct Pointer<Pointee> {
+/// A pointer in Strawberry is a raw, escapeable reference to one or multiple values. It is not
+/// necessarily implemented as a traditional C style integer representing a linear memory address,
+/// because Strawberry does not depend on linear memory for its specification.
+///
+/// Linear memory operations are possible on pointers, but such use is not guaranteed to be available
+/// on certain platforms so it should be avoided in favor of intrinsic messages instead. These extensions
+/// are intended for bridging code such as interacting with C or other foreign code where the program
+/// is already inherently tied to a linear memory model.
+///
+/// In general Strawberry code should avoid treating anything as memory and instead reason about
+/// semantics. Unusual low level operations should communicate semantic intent with intrinsic
+/// messages and extend the toolchain to support lowering them.
+///
+/// Pointers are very error prone and differ between platforms so they are intentionally being
+/// cautious and are marked as not sendable.
+pub struct Pointer<to: Pointee>: not Sendable {
+    let raw: #Pointer(Pointee)
+    
+    init(raw: #Pointer(Pointee)) {
+        self.raw = raw
+    }
+    
+    pub unsafe get pointee(&self) -> &Pointee {
+        #pointee(self.raw)
+    }
+    
+    pub unsafe set pointee(&self, _ value: Pointee) {
+        #pointee(self.raw) = value
+    }
+    
+    pub unsafe mut pointee(&self, _ mutation: (mut &value: Pointee) -> ()) {
+        mutation(#pointee(self.raw))
+    }
+    
+    pub unsafe subscript get(&self, _ index: USize) -> &Pointee {
+        #pointee_at(self.raw, index)
+    }
+    
+    pub unsafe subscript set(&self, _ index: USize, _ value: Pointee) {
+        #pointee_at(self.raw, index) = value
+    }
+    
+    pub unsafe subscript mut(&self, _ index: USize, _ mutation: (mut &value: Pointee) -> ()) {
+        mutation(#pointee_at(self.raw, index))
+    }
+    
+    pub const null = Self(#null_pointer())
+    pub const dangling = Self(#dangling_pointer())
+}
 
+/// A linear memory extension, a supertype to pointers which is not bound to any type.
+/// This type is not portable but is instead meant to interoperate with C void pointers
+/// or similar constructs in linear memory based languages.
+pub struct RawPointer where #linear_memory() {
+    let raw: #RawPointer
+    
+    pub unsafe fun bind<to: T>(self) -> Pointer<to: T> {
+        //: TODO: Fix hack.
+        unsafe self.transmute()
+    }
+}
+
+/// Linear memory extension to pointer functionality, such as pointer arithmetic and numeric conversions.
+pub extend Pointer where #linear_memory() {
+    pub fun erase(self) -> RawPointer {
+        //: TODO: Fix hack.
+        unsafe self.transmute()
+    }
+}
+
+/// A collection of raw memory-like operations impossible within normal Strawberry semantics.
+extend Any {
+    /// Performs a raw copy transferring the value from source to destination with no regard
+    /// to the value model, such as initialization or deinitialization. This is a highly
+    /// unsafe operation handled in a platform specific way to provide memory-like semantics.
+    pub unsafe fun raw_copy(&self, to mut &destination: Self) {
+        #raw_copy(source, destination)
+    }
+
+    /// Attempts to reinterptet the type as something else entirely. This operation is often
+    /// called a bit cast, but in Strawberry value representation is by default not defined.
+    ///
+    /// This is not a portable operation and it should almost never be used. It is meant
+    /// purely as a last resort hack in low level platform code.
+    pub unsafe fun transmute<into: Result>(self) -> Result {
+        #transmute(Result, self)
+    }
 }

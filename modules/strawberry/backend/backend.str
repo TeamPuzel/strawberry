@@ -1,0 +1,10 @@
+module strawberry.backend
+
+pub base class Backend: Box<Self> {
+
+}
+
+/// Exports a backend from an implementation module.
+pub annotation Backend where Self: Backend {
+    pub init()
+}

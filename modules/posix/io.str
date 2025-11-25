@@ -1,0 +1,56 @@
+module posix where #posix_conformant_libc()
+
+/// A set of external declarations for the implementation of POSIX IO.
+object Platform {
+    @Convention(.C)
+    @Extern(library: "c")
+    pub unsafe fun fclose(RawPointer)
+}
+
+/// A file representing a handle to binary or text data.
+///
+/// Files are not copyable as they are uniquely identified and closed automatically.
+pub struct File: not Copyable {
+    let handle: RawPointer
+    
+    init(handle: RawPointer) {
+        self.handle = handle
+    }
+    
+    pub static stdin: Self { todo() }
+    pub static stdout: Self { todo() }
+    pub static stderr: Self { todo() }
+    
+    deinit {
+        //! This is an external call respecting the specification
+        //! and calling convention for supported platforms.
+        unsafe Platform.fclose(self.handle)
+    }
+    
+    pub get extension: String { todo() }
+}
+
+/// A directory structure containing subdirectories or files.
+pub struct Directory {
+    
+}
+
+/// Allow iterating files in a directory.
+extend Directory: Sequence<of: File> {
+
+}
+
+/// Allow iterating directories in a directory.
+extend Directory: Sequence<of: Self> {
+
+}
+
+pub object Environment {
+    pub fun arguments() -> Sequence<of: String> {
+        todo()
+    }
+    
+    pub fun variable(named name: String) -> String? {
+        todo()
+    }
+}

@@ -1,5 +1,8 @@
 module core
-//? The following standard set of marker annotations is useful for target backends and reflection.
+//? Annotations are compile time data structures which can be attached to declarations to provide
+//? meta functionality for frameworks or target backends.
+//?
+//? The following standard set of marker annotations is useful for tooling, target backends and reflection.
 //? These are mainly hints as their usage is very contextual to the backend.
 //? Most of these are specific to native targets and a linear memory model.
 //?
@@ -18,7 +21,7 @@ pub annotation LinkSection {
 
 /// Annotates a declaration as a hint for its minimum alignment. This is very rarely useful
 /// and is generally only relevant to linear memory backends.
-pub annotation Alignment where Self.Type == .Struct {
+pub annotation Alignment {
     pub let bytes: Integer
     
     pub init(of bytes: Integer) {
@@ -44,12 +47,23 @@ pub annotation Export {
 ///
 /// This annotation is highly unsafe as most targets don't have any safety system to ensure
 /// the signature, calling convention or other esoteric requirements are met.
-pub unsafe annotation Extern where Self.Type == .Function {
+pub unsafe annotation Extern {
     pub let library: String? = .None
+    pub let linkage: Linkage = .Unspecified
     
     pub init()
-    pub init(library: String) {
+    
+    pub init(library: String, linkage: Linkage = .Unspecified) {
         self.library = library
+        self.linkage = linkage
+    }
+    
+    /// A standard set of native linkage types.
+    pub enum Linkage {
+        Unspecified
+        Static
+        Dynamic
+        Runtime
     }
 }
 
@@ -62,6 +76,7 @@ pub annotation Convention where Self.Type == .Function {
         self.kind = kind
     }
     
+    /// A standard set of native calling conventions.
     pub enum Kind {
         Automatic
         Strawberry
@@ -77,6 +92,30 @@ pub annotation Convention where Self.Type == .Function {
 
 /// Annotates the entry point to the program for conventional binary targets.
 /// The semantic of program entry depend on the target backend.
+///
+/// The entry point can be a free function or be provided as a type function,
+/// which allows inheriting the entry point from a category or superclass letting
+/// higher level libraries like game or application frameworks automate default entry logic.
 pub annotation Entry {
+    pub init()
+}
+
+/// Annotates an experimental declaration which should not be used in production code.
+/// Can be used by tooling to try and warn about production usage of such declarations.
+pub annotation Experimental {
+    pub let reason: String? = .None
+    
+    pub init()
+    
+    pub init(reason: String) {
+        self.reason = reason
+    }
+}
+
+/// Annotates a public declaration as one that should be hidden or de-emphasized
+/// by documentation or tooling, for instance very niche declarations only relevant
+/// for esoteric use cases. A system browser for example could have a toggle to
+/// show or hide such declarations so as not to pollute the experience with irrelevant details.
+pub annotation Hidden {
     pub init()
 }

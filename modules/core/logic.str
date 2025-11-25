@@ -10,3 +10,6 @@ extend Boolean: Equatable {
         
     }
 }
+
+pub literal fun true() -> Boolean { .True }
+pub literal fun false() -> Boolean { .False }

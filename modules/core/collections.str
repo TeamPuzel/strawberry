@@ -1,12 +1,22 @@
 module core
 
-pub category Sequence<of: Element> {
-    fun for(self, each: (element: Element) -> ())
-    fun for(&self, each: (element: &Element) -> ())
+/// A sequence which supports by-value iteration of all its elements.
+pub category OwningSequence<of: Element> {
+    fun for<E>(self, each: (element: Element) throws E -> ()) throws E
 }
 
+/// A sequence which allows borrowing iteration of all its elements.
+pub category Sequence<of: Element> {
+    fun for<E>(&self, each: (element: &Element) throws E -> ()) throws E
+}
+
+/// A sequence which allows mutating iteration of all its elements.
 pub category MutableSequence<of: Element>: Sequence<of: Element> {
-    fun for(self, each: (mut element: &Element) -> ())
+    fun for<E>(self, each: (mut element: &Element) throws E -> ()) throws E
+}
+
+pub category OwningCollection<of: Element, Index> {
+    subscript fun get(&self, at index: Index) -> Element
 }
 
 pub category Collection<of: Element, Index> {
@@ -14,5 +24,28 @@ pub category Collection<of: Element, Index> {
 }
 
 pub category MutableCollection<of: Element, Index>: Collection<of: Element, Index> {
-    subscript fun set(self, at index: Index, value: Element)
+    subscript fun set(mut &self, at index: Index, value: Element)
+}
+
+/// A value which can opaquely consume elements.
+@Experimental
+pub category Sink<of: Element, with: Exception = ()> {
+    fun sink(mut &self, _ element: Element) throws Exception
+    
+    fun sink(mut &self, _ elements: Sequence<of: Element>) throws Exception {
+        for element in elements do try self.sink(element)
+    }
+}
+
+pub struct Map<Inner, Mapping, Result>
+where 
+    Inner: Sequence,
+    Mapping: (element: Inner.Element) -> Result
+{
+    pub let mut inner: Inner
+    pub let mapping: Mapping
+    
+    fun for<E>(&self, each: (element: &Element) throws E -> ()) throws E {
+        for element in inner do 
+    }
 }

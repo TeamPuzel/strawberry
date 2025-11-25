@@ -106,17 +106,27 @@ pub struct Fixed<const _ size: Integer = #default_int_size(), const _ decimal: I
 /// and integers they require explicit conversions everywhere. That's an intentional decision
 /// different to most languages which implcitly allow unsound logic making it trivial to
 /// introduce bugs such as loss of precision over time in simulations.
-pub struct Float<const _ size: Integer = #default_float_size(), const _ decimal: Integer = size / 2> {
+pub struct Float<const _ size: Integer = #default_float_size(), const _ decimal: Integer = #default_float_decimal()> {
 
 }
 
-
+/// A wrapper representing either the presence or absence of a value.
+//# TODO:
+//# [ ] Implement the collection category.
 pub enum Optional<Inner> {
     None
     Some(Inner)
 
     pub implicit init(_ value: Inner) {
         self = .Some(value)
+    }
+    
+    pub postfix operator ! fun unwrap(self) -> Inner {
+        if let .Some(inner) = self then inner else panic("Unwrapped a none value.")
+    }
+    
+    pub infix operator ?? fun unwrap_or(self, default: lazy Inner) -> Inner {
+        if let .Some(inner) = self then inner else default
     }
 }
 

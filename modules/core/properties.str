@@ -1,4 +1,11 @@
 module core
+//? The following declarations describe fundamental properties of types and their values.
+//? They tend to be inherent which makes them either opt-out or derived from
+//?
+//? It is often possible to forcibly implement them, but that is almost always unsafe.
+//? The option is there for low level primitives that are able to preserve properties
+//? like thread safety despite breaking the inherent requirements, but that's something
+//? the language cannot prove thus making it highly unsafe to attempt.
 
 /// A value which can be implicitly copied in place of destructive move.
 ///

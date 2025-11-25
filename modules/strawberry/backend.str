@@ -1,9 +1,0 @@
-module strawberry.backend
-
-pub base class Backend: Box<Self> {
-
-}
-
-pub annotation Backend {
-
-}

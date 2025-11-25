@@ -3,6 +3,10 @@ module main
 import strawberry
 import posix
 
+/// An implementation of the strawberry toolchain in terms of POSIX IO.
+@Entry
 pub fun main() {
-
+    let .Some(module_paths) = Environment.variable("STRAWBERRY_MODULE_PATH") else {
+        todo()
+    }
 }

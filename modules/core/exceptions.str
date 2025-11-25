@@ -1,0 +1,23 @@
+module core
+
+pub fun panic() -> Never {
+    #panic()
+}
+
+pub fun panic(reason: String) -> Never {
+    #panic(reason)
+}
+
+pub fun panic(with value: Any) -> Never {
+    #panic(value)
+}
+
+pub fun todo() -> Never {
+    panic("Not implemented.")
+}
+
+@Hidden
+@DefaultPanicHandler
+pub fun default_panic_handler() -> Never {
+    #trap() // TODO: Implement a proper panic handler.
+}

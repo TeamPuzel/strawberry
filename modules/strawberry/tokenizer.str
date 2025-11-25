@@ -1,22 +1,23 @@
 module strawberry
 
+/// A fundamental primitive unit of Strawberry source code.
 pub enum Token {
-    /// A literal sequence of text or digits starting with text.
-    Ident(String)
-    /// A literal sequence of symbols which does not include text or digits.
-    Symbol(String)
+    /// A literal sequence of underscores, text or digits starting with text or an underscore.
+    Identifier(literal: String)
+    /// A literal sequence of symbols which does not include underscores, text or digits.
+    Symbol(literal: String)
     /// A literal sequence starting with an arabic digit.
     /// The sequence allows non trailing single underscores or single dots as well as letters but
     /// does not terminate with a symbol.
-    Number(String)
+    Number(literal: String)
     /// A literal character enclosed in single-quotes.
-    Character(String)
+    Character(literal: String)
     /// A literal single-line string enclosed in double-quotes.
-    String(String)
+    String(literal: String)
     /// A literal piece of a multi-line string started by a backslash and space.
-    MultilineString(String)
+    MultilineString(literal: String)
 
-    /// A source comment starting with two slashes and a selector followed by a space.
+    /// A source comment starting with two slashes and a selector separated by a space.
     Comment(selector: String, content: String)
 
     /// A count of spaces.
@@ -36,10 +37,14 @@ pub enum Token {
     /// Pounds designate primitive selectors and have no symbolic meaning in the language.
     Pound
 
-    LeftParen
-    RightParen
-    LeftCurly
-    RightCurly
-    LeftBracket
-    RightBracket
+    LeftParenthesis
+    RightParenthesis
+    LeftCurlyBracket
+    RightCurlyBracket
+    LeftSquareBracket
+    RightSquareBracket
+}
+
+pub fun tokenize(source: String) -> Sequence<of: Token> {
+    todo()
 }

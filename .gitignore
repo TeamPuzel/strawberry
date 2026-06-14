@@ -1,0 +1,9 @@
+/build
+
+.DS_Store
+
+/.cache
+/.clangd
+
+/editor/zed-strawberry/grammars
+/editor/zed-strawberry/extension.toml

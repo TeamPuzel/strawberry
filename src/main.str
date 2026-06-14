@@ -1,0 +1,6 @@
+module main
+
+@Entry
+pub fun main() {
+
+}

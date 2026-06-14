@@ -1,0 +1,136 @@
+module core
+
+/// Annotates a function as a foreign import hint, asking the backend to
+/// discover the implementation for this function in some form
+/// relevant to the target backend.
+///
+/// An additional library name hint can be provided which the
+/// backend can use to try and link the function in some way.
+///
+/// This annotation is highly unsafe as most targets don't have any safety
+/// system to ensure that the signature, calling convention or other
+/// esoteric requirements are met.
+pub unsafe annotation Extern {
+    pub let library: String?
+    pub let name: String?
+    pub let linkage: Linkage
+
+    pub init(
+        library: String? = .None,
+        name: String? = .None,
+        linkage: Linkage = .Unspecified
+    ) {
+        self.library = library
+        self.name = name
+        self.linkage = linkage
+    }
+
+    /// A standard set of native linkage types.
+    pub enum Linkage {
+        Unspecified
+        Static
+        Dynamic
+        Runtime
+    }
+}
+
+/// This is an unsafe to apply hint which suggests arbitrarily renaming
+/// the resulting symbol. This is of course very unsafe and only used
+/// for foreign binding or the lowest level of code.
+pub annotation SymbolName {
+    pub let name: String
+
+    pub unsafe init(_ name: String) {
+        self.name = name
+    }
+}
+
+/// Annotates a function with a hint to use a specific calling convention.
+/// This is very target backend specific and could just be
+/// ignored in meaningless cases.
+pub annotation Convention {
+    pub let name: String
+
+    pub init(_ name: String) {
+        self.name = name
+    }
+}
+
+/// Annotates a type with a hint to use a concrete memory representation,
+/// such as a packed or C compatible structure. Backends that provide
+/// interoperability with such foreign ABI must respect these hints,
+/// but they should not be relied upon. Strawberry is abstract and
+/// does not define memory representation at all so this is primarily
+/// intended for foreign binding code.
+pub annotation MemoryLayout {
+    pub let name: String
+
+    pub init(_ name: String) {
+        self.name = name
+    }
+}
+
+/// Annotates a function with a hint to its cost, intended
+/// to assist inlining analysis.
+pub annotation Cost {
+    pub let value: Integer
+
+    pub init(_ value: Integer) {
+        self.value = value
+    }
+}
+
+/// Used for availability analysis.
+pub annotation Available {
+    pub let environment: String
+
+    pub init(on environment: String) {
+        self.environment = environment
+    }
+}
+
+/// Annotates a declaration, generally a function, as a foreign export hint,
+/// making it accessible externally in some form relevant to the target backend.
+///
+/// Unlike external declarations this is not unsafe, as the language can't
+/// protect itself from a dangerous environment anyway. It is the
+/// responsibility of the environment to interact with the exposed interface
+/// safely, which is highly target backend specific.
+pub annotation Export {
+    pub init() {}
+}
+
+/// Annotates a declaration with a hint that it's result does not need to be
+/// used which is normally required to be a warning.
+pub annotation Discardable {
+    pub init() {}
+}
+
+/// Annotates a declaration with a hint for tooling to suppress a specific lint or warning.
+pub annotation Allow {
+    pub let name: String
+
+    pub init(_ name: String) {
+        self.name = name
+    }
+}
+
+/// Annotates a public declaration as one that should be hidden or de-emphasized
+/// by documentation or tooling, for instance very niche declarations
+/// only relevant for esoteric use cases. A system browser for example
+/// could have a toggle to show or hide such declarations so as not to pollute
+/// the experience with irrelevant details.
+pub annotation Hidden {
+    pub init() {}
+}
+
+/// Annotates the entry point to the program for conventional binary targets.
+/// The semantic of program entry depend on the target backend.
+///
+/// The entry point can be a free function or be provided as a type function,
+/// which allows inheriting the entry point from a category or superclass
+/// letting higher level libraries like game or application frameworks
+/// automate default entry logic.
+pub annotation Entry {
+    pub init() {}
+}

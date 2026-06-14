@@ -1,0 +1,53 @@
+module core
+
+pub struct Range<of: Bound> where Bound: PartiallyOrdered {
+    pub let start: Edge
+    pub let end: Edge
+
+    pub init(start: Edge, end: Edge) {
+        self.start = start
+        self.end = end
+    }
+
+    pub const let all: Self = .init(start: .Unbounded, end: .Unbounded)
+
+    pub enum Edge {
+        Unbounded
+        Inclusive(Bound)
+        Exclusive(Bound)
+    }
+}
+
+extend PartiallyOrdered {
+    pub infix operator ..< fun range_from(self, until bound: Self) -> Range<of: Self> {
+        .init(start: .Inclusive(self), end: .Exclusive(bound))
+    }
+
+    pub infix operator ... fun range_from(self, to bound: Self) -> Range<of: Self> {
+        .init(start: .Inclusive(self), end: .Inclusive(bound))
+    }
+
+    pub infix operator >.< fun range_after(self, until bound: Self) -> Range<of: Self> {
+        .init(start: .Exclusive(self), end: .Exclusive(bound))
+    }
+
+    pub infix operator >.. fun range_after(self, to bound: Self) -> Range<of: Self> {
+        .init(start: .Exclusive(self), end: .Inclusive(bound))
+    }
+
+    pub postfix operator ... fun range_from(self) -> Range<of: Self> {
+        .init(start: .Inclusive(self), end: .Unbounded)
+    }
+
+    pub postfix operator >.. fun range_after(self) -> Range<of: Self> {
+        .init(start: .Exclusive(self), end: .Unbounded)
+    }
+
+    pub prefix operator ... fun range_to(self) -> Range<of: Self> {
+        .init(start: .Unbounded, end: .Inclusive(self))
+    }
+
+    pub prefix operator ..< fun range_until(self) -> Range<of: Self> {
+        .init(start: .Unbounded, end: .Exclusive(self))
+    }
+}

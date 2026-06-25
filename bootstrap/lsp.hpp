@@ -22,6 +22,7 @@
 #pragma once
 
 #include <iostream>
+#include <print>
 #include "strc.hpp"
 #include "coding.hpp"
 #include "primitive.hpp"
@@ -60,10 +61,17 @@ namespace str::lsp {
         PublishDiagnosticsParams params;
     };
 
+    struct TextDocumentSyncOptions final {
+        [[=str::coding::rename("openClose")]]
+        bool open_close = true;
+        u32 change = 1;
+        bool save = true;
+    };
+
     struct InitResult final {
         struct Capabilities final {
             [[=str::coding::rename("textDocumentSync")]]
-            u32 text_document_sync = 1;
+            TextDocumentSyncOptions text_document_sync;
         } capabilities;
     };
 
@@ -92,119 +100,94 @@ namespace str::lsp {
         DidOpenParams params;
     };
 
-    struct DidChangeParams final {
-        struct Document final {
-            std::string uri;
-        };
+    struct DidSaveNotification final {
+        struct Params final {
+            struct Document final {
+                std::string uri;
+            };
 
-        struct Change final {
-            std::string text;
-        };
-
-        [[=str::coding::rename("textDocument")]]
-        Document text_document;
-        [[=str::coding::rename("contentChanges")]]
-        std::vector<Change> content_changes;
+            [[=str::coding::rename("textDocument")]]
+            Document text_document;
+        } params;
     };
 
-    struct DidChangeNotification final {
-        DidChangeParams params;
+    struct ShutdownResponse final {
+        std::string jsonrpc = "2.0";
+        u32 id = 0;
+        std::optional<std::monostate> result = std::nullopt;
     };
 
     inline void send(std::string_view message) {
-        std::cout
-            << "Content-Length: " << message.size()
-            << "\r\n\r\n"
-            << message
-            << std::flush;
+        std::cerr << "[strc] sending: " << message << "\n";
+
+        std::print(stdout, "Content-Length: {}\r\n\r\n{}", message.size(), message);
+        std::fflush(stdout);
     }
 
-    inline auto to_lsp_diagnostic(str::Diagnostic const& diag) -> Diagnostic {
-        Diagnostic lsp_diag;
+    inline auto to_lsp_diagnostic(str::Diagnostic const& diagnostic) -> Diagnostic {
+        Diagnostic lsp_diagnostic;
 
-        switch (diag.severity) {
-            case str::Diagnostic::Severity::Error:   lsp_diag.severity = Diagnostic::Severity::Error; break;
-            case str::Diagnostic::Severity::Warning: lsp_diag.severity = Diagnostic::Severity::Warning; break;
-            case str::Diagnostic::Severity::Info:    lsp_diag.severity = Diagnostic::Severity::Info; break;
-            case str::Diagnostic::Severity::Runtime: lsp_diag.severity = Diagnostic::Severity::Error; break;
+        switch (diagnostic.severity) {
+            case str::Diagnostic::Severity::Error:   lsp_diagnostic.severity = Diagnostic::Severity::Error;   break;
+            case str::Diagnostic::Severity::Warning: lsp_diagnostic.severity = Diagnostic::Severity::Warning; break;
+            case str::Diagnostic::Severity::Info:    lsp_diagnostic.severity = Diagnostic::Severity::Info;    break;
+            case str::Diagnostic::Severity::Runtime: lsp_diagnostic.severity = Diagnostic::Severity::Info;    break;
         }
 
-        lsp_diag.message = diag.reason;
+        lsp_diagnostic.message = diagnostic.reason;
 
         std::visit(overloaded {
             [&] (str::Provenance::Span const& span) {
-                // LSP Positions are 0-indexed, Token lines and columns are 1-indexed.
-                lsp_diag.range.start.line = span.start.line > 0 ? span.start.line - 1 : 0;
-                lsp_diag.range.start.character = span.start.column > 0 ? span.start.column - 1 : 0;
-                lsp_diag.range.end.line = span.end.line > 0 ? span.end.line - 1 : 0;
-                lsp_diag.range.end.character = (span.end.column > 0 ? span.end.column - 1 : 0) + span.end.count;
+                lsp_diagnostic.range.start.line = span.start.line > 0 ? span.start.line - 1 : 0;
+
+                lsp_diagnostic.range.start.character =
+                    (span.start.column >= span.start.count)
+                        ? span.start.column - span.start.count
+                        : 0;
+
+                lsp_diagnostic.range.end.line = span.end.line > 0 ? span.end.line - 1 : 0;
+
+                lsp_diagnostic.range.end.character = span.end.column;
             },
             [&] (str::Provenance::Source const& source) {
-                lsp_diag.range.start.line = 0;
-                lsp_diag.range.start.character = 0;
-                lsp_diag.range.end.line = 0;
-                lsp_diag.range.end.character = 0;
+                lsp_diagnostic.range.start.line = 0;
+                lsp_diagnostic.range.start.character = 0;
+                lsp_diagnostic.range.end.line = 0;
+                lsp_diagnostic.range.end.character = 0;
             }
-        }, diag.provenance.data);
+        }, diagnostic.provenance.data);
 
-        return lsp_diag;
+        return lsp_diagnostic;
     }
 
-    inline void publish_diagnostics(std::string_view uri, std::string_view text, str::coding::Json& json) {
-        // Collect disk workspace units and parse URI.
+    inline void publish_diagnostics(
+        std::string_view uri,
+        std::span<const str::Diagnostic> diagnostics,
+        str::coding::Json& json
+    ) {
         auto source_units = str::run::collect_all_source_units();
 
-        std::string file_path = std::string(uri);
-        if (file_path.starts_with("file://")) file_path = file_path.substr(7);
-
-        // Overlay the latest LSP memory buffer into the target file unit.
-        bool found_in_fs = false;
-        for (auto& unit : source_units) {
-            if (file_path.ends_with(unit.source) or unit.source.ends_with(file_path)) {
-                unit.text = text;
-                found_in_fs = true;
-                break;
-            }
-        }
-
-        // Add the buffer as a new source unit if it doesn't currently exist on disk.
-        if (not found_in_fs) {
-            source_units.emplace_back(std::string(text), file_path);
-        }
-
-        // Execute compiler pipeline.
-        std::vector<str::Diagnostic> compiler_diags;
-        auto modules = str::run::parse_modules(source_units);
-
-        if (not modules) {
-            compiler_diags = std::move(modules.error());
-        } else {
-            auto sir = str::evaluate(std::move(modules.value()), std::move(source_units));
-            for (auto const& diag : sir.get_diagnostics()) {
-                compiler_diags.push_back(diag);
-            }
-        }
-
-        // Filter for active file and build the notification.
         PublishDiagnosticsNotification notification;
         notification.params.uri = std::string(uri);
 
-        for (auto const& diag : compiler_diags) {
-            std::string_view diag_source;
-            if (std::holds_alternative<str::Provenance::Span>(diag.provenance.data)) {
-                diag_source = std::get<str::Provenance::Span>(diag.provenance.data).start.source;
+        for (auto const& diagnostic : diagnostics) {
+            std::string_view diagnostic_source;
+
+            if (std::holds_alternative<str::Provenance::Span>(diagnostic.provenance.data)) {
+                diagnostic_source = std::get<str::Provenance::Span>(diagnostic.provenance.data).start.source;
             } else {
-                diag_source = std::get<str::Provenance::Source>(diag.provenance.data).source;
+                diagnostic_source = std::get<str::Provenance::Source>(diagnostic.provenance.data).source;
             }
 
-            if (file_path.ends_with(diag_source) || diag_source.ends_with(file_path)) {
-                notification.params.diagnostics.push_back(to_lsp_diagnostic(diag));
+            if (uri.ends_with(diagnostic_source) or diagnostic_source.ends_with(uri)) {
+                notification.params.diagnostics.push_back(to_lsp_diagnostic(diagnostic));
             }
         }
 
         send(json.encode(notification));
     }
 
+    /// The entry point for the serve subcommand.
     inline i32 main() {
         std::cin.tie(nullptr);
         std::ios_base::sync_with_stdio(false);
@@ -212,19 +195,23 @@ namespace str::lsp {
         str::coding::Json json;
 
         while (true) {
-            std::string line; std::getline(std::cin, line);
-            if (not std::cin) break;
-
             try {
+                std::string line; std::getline(std::cin, line);
+                if (not std::cin) break;
+
                 if (line.starts_with("Content-Length: ")) {
                     u32 length = std::stoul(line.substr(16));
 
-                    std::getline(std::cin, line);
+                    while (std::getline(std::cin, line)) {
+                        if (line.empty() or line == "\r") break;
+                    }
 
                     std::string content(length, ' ');
                     std::cin.read(content.data(), length);
 
+                    std::cerr << "[strc] receiving: " << content << std::endl;
                     auto base = json.decode<BaseMessage>(content);
+                    std::cerr << "[strc] decoded as: " << json.encode(base) << std::endl;
 
                     if (base.method == "initialize") {
                         InitializeResponse response;
@@ -232,26 +219,45 @@ namespace str::lsp {
                         send(json.encode(response));
                     } else if (base.method == "textDocument/didOpen") {
                         auto request = json.decode<DidOpenNotification>(content);
+                        std::string_view uri = request.params.text_document.uri;
 
-                        publish_diagnostics(
-                            request.params.text_document.uri,
-                            request.params.text_document.text,
-                            json
-                        );
-                    } else if (base.method == "textDocument/didChange") {
-                        auto request = json.decode<DidChangeNotification>(content);
+                        auto source_units = str::run::collect_all_source_units();
+                        auto modules = str::run::parse_modules(source_units);
 
-                        if (not request.params.content_changes.empty()) {
-                            publish_diagnostics(
-                                request.params.text_document.uri,
-                                request.params.content_changes.front().text,
-                                json
-                            );
+                        if (not modules) {
+                            publish_diagnostics(uri, modules.error(), json);
+                        } else {
+                            auto sir = str::evaluate(std::move(modules.value()), std::move(source_units));
+                            publish_diagnostics(uri, sir.get_diagnostics(), json);
                         }
+                    } else if (base.method == "textDocument/didSave") {
+                        auto request = json.decode<DidSaveNotification>(content);
+                        std::string_view uri = request.params.text_document.uri;
+
+                        auto source_units = str::run::collect_all_source_units();
+                        auto modules = str::run::parse_modules(source_units);
+
+                        if (not modules) {
+                            publish_diagnostics(uri, modules.error(), json);
+                        } else {
+                            auto sir = str::evaluate(std::move(modules.value()), std::move(source_units));
+                            publish_diagnostics(uri, sir.get_diagnostics(), json);
+                        }
+                    } else if (base.method == "initialized") {
+                        // pass
+                    } else if (base.method == "shutdown") {
+                        ShutdownResponse response { .id = base.id };
+                        send(json.encode(response));
+                    } else if (base.method == "exit") {
+                        break;
+                    } else if (base.method == "$/cancelRequest") {
+                        // pass
+                    } else {
+                        std::cerr << "[strc] unknown method: " << base.method << std::endl;
                     }
                 }
-            } catch (str::Diagnostic const& diagnostic) {
-                std::cerr << "[strc] LSP Decode Error: " << diagnostic.reason << std::endl;
+            } catch (coding::Json::Error& error) {
+                std::cerr << "[strc] json error: " << error.what() << std::endl;
             }
         }
 

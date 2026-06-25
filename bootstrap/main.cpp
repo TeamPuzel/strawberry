@@ -48,7 +48,7 @@ i32 main(i32 argc, char** argv) {
         "usage: strc [subcommand] [options]\n\n"
 
         "This is the stage 0 prototype bootstrap C++ compiler,\n"
-        "it is only intended for bootstrapping actual strc.\n\n"
+        "it is only intended for bootstrapping the actual strc.\n\n"
 
         "subcommands:\n"
         "  run        Run the bootstrap compiler\n"

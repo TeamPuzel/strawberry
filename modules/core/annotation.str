@@ -106,7 +106,8 @@ pub annotation Discardable {
     pub init() {}
 }
 
-/// Annotates a declaration with a hint for tooling to suppress a specific lint or warning.
+/// Annotates a declaration with a hint for tooling to
+/// suppress a specific lint or warning.
 pub annotation Allow {
     pub let name: String
 

@@ -35,6 +35,8 @@
 #include <print>
 #include <expected>
 #include <filesystem>
+#include <ostream>
+#include <iostream>
 #include <cstdio>
 #include "primitive.hpp"
 
@@ -215,9 +217,13 @@ namespace str {
         enum class Severity { Error, Warning, Info, Runtime } severity;
         Provenance provenance;
         std::string reason;
+        std::optional<std::string> help;
 
         constexpr Diagnostic(Severity severity, Provenance provenance, std::string reason) noexcept
             : severity(severity), provenance(provenance), reason(std::move(reason)) {}
+
+        constexpr Diagnostic(Severity severity, Provenance provenance, std::string reason, std::string help) noexcept
+            : severity(severity), provenance(provenance), reason(std::move(reason)), help(std::move(help)) {}
 
         auto what() const noexcept -> char const* override {
             return reason.c_str();
@@ -237,6 +243,22 @@ namespace str {
 
         static constexpr Diagnostic runtime(Provenance provenance, std::string reason) noexcept {
             return Diagnostic(Severity::Runtime, provenance, std::move(reason));
+        }
+
+        static constexpr Diagnostic error(Provenance provenance, std::string reason, std::string help) noexcept {
+            return Diagnostic(Severity::Error, provenance, std::move(reason), std::move(help));
+        }
+
+        static constexpr Diagnostic warning(Provenance provenance, std::string reason, std::string help) noexcept {
+            return Diagnostic(Severity::Warning, provenance, std::move(reason), std::move(help));
+        }
+
+        static constexpr Diagnostic info(Provenance provenance, std::string reason, std::string help) noexcept {
+            return Diagnostic(Severity::Info, provenance, std::move(reason), std::move(help));
+        }
+
+        static constexpr Diagnostic runtime(Provenance provenance, std::string reason, std::string help) noexcept {
+            return Diagnostic(Severity::Runtime, provenance, std::move(reason), std::move(help));
         }
     };
 }
@@ -297,13 +319,6 @@ template <> struct std::formatter<str::Token, char> {
 
 namespace str {
     class TokenStream final {
-      public:
-        struct Config final {
-            bool allow_tabs = false;
-            bool skip_newlines = false;
-        };
-
-      private:
         std::string_view text;
         std::string_view source;
         u32 index = 0;
@@ -312,7 +327,6 @@ namespace str {
         u32 consumed_count = 0;
         std::optional<Token> last_token;
         std::vector<Token> provenance_stack;
-        Config config;
 
       public:
         auto get_text() const -> std::string_view {
@@ -339,14 +353,10 @@ namespace str {
             return { start, end };
         }
 
-        friend constexpr auto tokenize(
-            std::string_view text,
-            std::string_view source,
-            TokenStream::Config config
-        ) -> TokenStream;
+        friend constexpr auto tokenize(std::string_view text, std::string_view source) -> TokenStream;
 
-        constexpr TokenStream(std::string_view text, std::string_view source, Config config)
-            : text(text), source(source), config(config) {}
+        constexpr TokenStream(std::string_view text, std::string_view source)
+            : text(text), source(source){}
 
       public:
         class ProvenanceScope final {
@@ -445,7 +455,7 @@ namespace str {
                 not is(' ') and not is('"') and not is('#') and not is('\'') and
                 not is('(') and not is(')') and not is(',') and not is(':') and
                 not is(';') and not is('@') and not is('[') and not is('\\') and
-                not is(']') and not is('{') and not is('}');
+                not is(']') and not is('{') and not is('}') and not is('`');
         }
 
         auto valid_digit() const -> bool {
@@ -527,15 +537,8 @@ namespace str {
             if (is(' ')) {
                 while (not finished() and is(' ')) consume();
                 no_yield(); goto start;
-            } else if (config.allow_tabs and is('\t')) {
-                while (not finished() and is('\t')) consume();
-                no_yield(); goto start;
             } else if (is('\n')) {
-                if (not config.skip_newlines) {
-                    consume(); end_line(); return yield<Token::NewLine>();
-                } else {
-                    consume(); no_yield(); goto start;
-                }
+                consume(); end_line(); return yield<Token::NewLine>();
             } else if (is('(')) {
                 consume(); return yield<Token::ParenLeft>();
             } else if (is(')')) {
@@ -569,7 +572,7 @@ namespace str {
 
                 auto selector = take_until([] (char c) { return c == ' ' or c == '\n'; });
 
-                if (is(' ')) consume();
+                if (not finished() and is(' ')) consume();
 
                 auto content = take_until('\n');
 
@@ -588,13 +591,39 @@ namespace str {
             } else if (is('"')) {
                 consume();
 
-                auto content = take_until('"');
+                auto content = take_until([] (char c) { return c == '"' or c == '\n'; });
 
                 if (not finished() and is('"')) {
                     consume();
                 } else {
-                    throw Diagnostic::error(failure_provenance(), "unterminated string");
+                    throw Diagnostic::error(yield<Token::Error>(), "unterminated string");
                 }
+
+                return yield<Token::String>(content);
+            } else if (is('`')) {
+                usize escape_count = 0;
+
+                while (not finished() and is('`')) {
+                    escape_count += 1;
+                    consume();
+                }
+
+                std::string sentinel(escape_count, '`');
+
+                usize count = 0;
+                while (not finished() and not are(sentinel)) {
+                    count += 1;
+                    consume();
+                }
+
+                if (finished()) {
+                    throw Diagnostic::error(yield<Token::Error>(), "unterminated string");
+                }
+
+                rewind(count);
+                auto content = take(count);
+
+                consume(escape_count);
 
                 return yield<Token::String>(content);
             } else if (in_range('0', '9')) {
@@ -607,14 +636,18 @@ namespace str {
 
                 if (finished()) {
                     // pass
+                } else if (valid_digit()) {
+                    goto num_loop;
                 } else if (is('_')) {
                     consume();
-                    if (not valid_digit()) throw Diagnostic::error(yield<Token::Error>(), "invalid underscore");
+                    if (finished() or not valid_digit()) throw Diagnostic::error(yield<Token::Error>(), "invalid underscore");
                     rewind();
 
                     goto num_loop;
                 } else if (is('.')) {
                     consume();
+
+                    if (finished()) throw Diagnostic::error(yield<Token::Error>(), "unterminated number");
 
                     // If the number does not continue then the dot is an operator or member access.
                     //
@@ -667,7 +700,7 @@ namespace str {
 
                 return yield<Token::Identifier>(content);
             } else {
-                throw Diagnostic::error(yield<Token::Error>(), "unexpected character");
+                throw Diagnostic::error(yield<Token::Error>(), std::format("unexpected character: {}", at()));
             }
         }
 
@@ -1007,12 +1040,8 @@ namespace str {
         }
     };
 
-    constexpr auto tokenize(
-        std::string_view text,
-        std::string_view source,
-        TokenStream::Config config = {}
-    ) -> TokenStream {
-        return TokenStream(text, source, config);
+    constexpr auto tokenize(std::string_view text, std::string_view source) -> TokenStream {
+        return TokenStream(text, source);
     }
 }
 
@@ -1253,11 +1282,12 @@ namespace str {
         };
 
         struct Intrinsic final {
+            std::optional<std::string_view> backend;
             std::string_view name;
             std::vector<ExprBox> expressions;
 
-            Intrinsic(std::string_view name, std::vector<ExprBox> expressions)
-                : name(name), expressions(std::move(expressions)) {}
+            Intrinsic(std::optional<std::string_view> backend, std::string_view name, std::vector<ExprBox> expressions)
+                : backend(backend), name(name), expressions(std::move(expressions)) {}
         };
 
         struct Tuple final {
@@ -1714,7 +1744,7 @@ namespace str {
             }
 
             if (tokens.match<Token::Pound>()) {
-                auto name = tokens.expect_as<Token::Identifier>().content;
+                // auto name = tokens.expect_as<Token::Identifier>().content;
 
                 // return Expr(
                 //     span.take(),
@@ -2001,7 +2031,7 @@ namespace str {
             } else if (next == "import") {
                 decl = parse_import(tokens);
             } else {
-                throw Diagnostic::error(*tokens.peek(), "invalid declaration");
+                throw Diagnostic::error(tokens.fallthrough_provenance(), "invalid declaration");
             }
 
             decl->documentation = std::move(documentation);
@@ -2151,7 +2181,7 @@ namespace str::run {
         return source_units;
     }
 
-    inline void print_compile_diagnostic(Diagnostic const& diagnostic, std::span<const SourceUnit> source_units) {
+    inline void print_compile_diagnostic(std::ostream& os, Diagnostic const& diagnostic, std::span<const SourceUnit> source_units) {
         static constexpr auto reset = "\033[0m";
         static constexpr auto dim   = "\033[90m";
 
@@ -2165,14 +2195,14 @@ namespace str::run {
             case Diagnostic::Severity::Runtime: color = "\033[35m"; level = "runtime"; break; // Purple
         }
 
-        std::println("{}{}:{}{} {}", color, level, reset, "\033[97m", diagnostic.what());
+        std::println(os, "{}{}:{}{} {}", color, level, reset, "\033[97m", diagnostic.what());
 
         std::visit(overloaded {
             [&] (Provenance::Span const& span) {
                 auto f = span.start;
                 auto l = span.end;
 
-                std::println("{}{}:{}:{}-{}:{}{}", dim, f.source, f.line, f.column - f.count + 1, l.line, l.column, reset);
+                std::println(os, "{}{}:{}:{}-{}:{}{}", dim, f.source, f.line, f.column - f.count + 1, l.line, l.column, reset);
 
                 u32 max_lines = 3;
                 u32 line_count = l.line - f.line + 1;
@@ -2186,7 +2216,7 @@ namespace str::run {
                 }
 
                 if (src_text.empty()) {
-                    std::println("");
+                    std::println(os, "");
                     return;
                 }
 
@@ -2213,37 +2243,37 @@ namespace str::run {
                     line_n += 1;
                 }
 
-                for (usize i = 0; i < lines.size(); ++i) {
+                for (usize i = 0; i < lines.size(); i += 1) {
                     u32 curr_line = f.line + i;
                     std::string ln_str = std::to_string(curr_line);
                     std::string pad(ln_str.size() < 4 ? 4 - ln_str.size() : 0, ' ');
 
-                    std::println("{}{} | {}{}", dim, pad + ln_str, reset, lines[i]);
+                    std::println(os, "{}{} | {}{}", dim, pad + ln_str, reset, lines[i]);
 
-                    std::print("{}     | {}", dim, color);
+                    std::print(os, "{}     | {}", dim, color);
 
                     if (f.line == l.line) {
                         u32 start_col = (f.column >= f.count) ? f.column - f.count : 0;
                         u32 width = (l.column > start_col) ? l.column - start_col : 1;
-                        std::println("{}{}", std::string(start_col, ' '), std::string(std::max(1u, width), '^'));
+                        std::println(os, "{}{}", std::string(start_col, ' '), std::string(std::max(1u, width), '^'));
                     } else if (curr_line == f.line) {
                         u32 start_col = (f.column >= f.count) ? f.column - f.count : 0;
                         u32 width = lines[i].size() > start_col ? lines[i].size() - start_col : 1;
-                        std::println("{}{}", std::string(start_col, ' '), std::string(std::max(1u, width), '^'));
+                        std::println(os, "{}{}", std::string(start_col, ' '), std::string(std::max(1u, width), '^'));
                     } else if (curr_line == l.line) {
-                        std::println("{}", std::string(l.column, '^'));
+                        std::println(os, "{}", std::string(l.column, '^'));
                     } else {
-                        std::println("{}", std::string(lines[i].size(), '^'));
+                        std::println(os, "{}", std::string(lines[i].size(), '^'));
                     }
-                    std::print("{}", reset);
+                    std::print(os, "{}", reset);
                 }
 
-                if (line_count > max_lines) std::println("{} ... | {}", dim, reset);
+                if (line_count > max_lines) std::println(os, "{} ... | {}", dim, reset);
 
-                std::println("");
+                std::println(os, "");
             },
             [&] (Provenance::Source const& src) {
-                std::println("{}{}{}\n", dim, src.source, reset);
+                std::println(os, "{}{}{}\n", dim, src.source, reset);
             }
         }, diagnostic.provenance.data);
     }
@@ -2278,7 +2308,7 @@ namespace str::run {
         auto modules = parse_modules(source_units);
         if (not modules) {
             for (auto const& diagnostic : modules.error()) {
-                print_compile_diagnostic(diagnostic, source_units);
+                print_compile_diagnostic(std::cout, diagnostic, source_units);
             }
 
             return -1;
@@ -2287,7 +2317,7 @@ namespace str::run {
         auto sir = evaluate(std::move(modules.value()), std::move(source_units));
 
         for (auto const& diagnostic : sir.get_diagnostics()) {
-            print_compile_diagnostic(diagnostic, sir.get_source_units());
+            print_compile_diagnostic(std::cout, diagnostic, sir.get_source_units());
         }
 
         if (not sir.failed()) {

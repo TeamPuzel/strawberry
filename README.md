@@ -32,7 +32,7 @@ consider it, like if it has an `Extern` annotation, and provide a residual for a
 
 Eventually the entire program is hopefully evaluated without errors when it is finally handed off to the target
 backend with the final task: handle all residuals. It could mean lowering the residual program to code,
-interpreting it, anything, anything really.
+interpreting it, anything really.
 
 This means that this is a valid 6502 program:
 

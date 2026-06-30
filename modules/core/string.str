@@ -1,1 +1,127 @@
 module core
+
+import core.memory
+
+/// String-like types describe a set of common, abstract functionality usually possible on strings
+/// that don't require knowledge of the underlying encoding.
+pub category StringLike {
+
+}
+
+/// A UTF-8 string.
+///
+/// It handles code points safely but doesn't implement full Unicode semantics.
+///
+/// It represents a 1-4 byte encoding so indexing in constant time is not possible, forcing
+/// the use of special, semantically safe string indices or explicitly choosing to work with bytes.
+///
+/// For handling known ASCII data efficiently convert to `AsciiString`.
+/// For handling Unicode properly convert to `UnicodeString`.
+///
+/// Ensures a null terminator past the end for interoperability.
+pub struct String<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
+    pub(get) let mut bytes: List<of: UInt<8>, in: Allocator>
+
+    pub init(from bytes: &SizedCollection<of: UInt<8>>, in allocator: Allocator) throws DecodingFailure {
+        // TODO: Validate on the fly that the bytes are legal UTF-8 instead of blindly flattening into a list.
+        self.bytes = bytes.flatten(in: allocator)
+    }
+
+    pub init(from bytes: &SizedCollection<of: UInt<8>) where Allocator: Defaultable {
+        self.bytes = bytes.flatten()
+    }
+
+    pub init(taking bytes: List<of: UInt<8>, in: Allocator>) throws DecodingFailure {
+        // TODO: Validate that the bytes are legal UTF-8 instead of blindly taking the list.
+        self.bytes = bytes
+    }
+
+    pub fun to_ascii(self) throws NotAscii -> AsciiString<in: Allocator> {
+        .init(from: self)
+    }
+
+    pub fun as_ascii(&self) throws NotAscii -> AsciiString<in: Allocator> 'self {
+        .init(borrowing: self)
+    }
+
+    pub fun as_mut_ascii(mut &self) throws NotAscii -> AsciiString<in: Allocator> 'self {
+        .init(mutating: &self)
+    }
+
+    pub fun to_unicode(self) -> UnicodeString<in: Allocator> {
+        .init(from: self)
+    }
+}
+
+/// Errors used by strings, namespaced to the common string.
+static extend String {
+    pub enum DecodingFailure {
+        InvalidByte(at: UInt, value: UInt<8>)
+    }
+
+    pub object NotAscii
+
+    pub type Char = UInt<8>
+}
+
+/// An ASCII string.
+///
+/// Ensures that the internal state is valid ASCII,
+/// allowing more performant operations such as constant time indexing with `UInt`, which is `unsafe` for UTF-8.
+///
+/// ASCII is very limited, but that is sometimes desirable, and always very efficient to work with.
+///
+/// Ensures a null terminator past the end for interoperability.
+pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
+    pub(get) let mut? string: String<in: Allocator>
+
+    pub init(from string: String<in: Allocator>) throws String.NotAscii {
+        if not string.is_ascii() then throw String.NotAscii
+        self.string = string
+    }
+
+    pub init(borrowing string: &String<in: Allocator>) 'string throws String.NotAscii {
+        if not string.is_ascii() then throw String.NotAscii
+        self.string = string
+    }
+
+    pub init(mutating string: mut &String<in: Allocator>) 'string throws String.NotAscii {
+        if not string.is_ascii() then throw String.NotAscii
+        self.string = string
+    }
+
+    pub get(&self, at index: UInt) -> String.Char {
+        unsafe self.string.get(at: index)
+    }
+
+    pub set(mut &self, _ value: String.Char, at index: UInt) where self.string::mutable {
+        unsafe self.string.set(value, at: index)
+    }
+}
+
+/// A Unicode string.
+///
+/// It changes semantics slightly, dealing with entire graphemes rather than code points.
+/// Graphemes are composed of potentially many code points, but they represent what
+/// could be described as individually, visually perceived characters
+/// (like a letter combined with accent marks or an emoji with a skin tone modifier).
+///
+/// This is the string you need to properly support modern user-facing communication systems, because
+/// Unicode allows some really annoying cases like multiple encodings for visually identical graphemes,
+/// requiring normalization to avoid causing seemingly esoteric behavior.
+///
+/// This kind of string is great for operating on strings semantically, but unfortunately
+/// it implements an extremely chaotic set of rules. The implementation uses
+/// minimal perfect hash functions to compress the required table data as much as possible,
+/// but be aware that many operations of this type, if residualized, may also residualize
+/// a sizeable amount of constant data to boot.
+///
+/// Ensures a null terminator past the end for interoperability.
+pub struct UnicodeString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
+    pub(get) let mut string: String<in: Allocator>
+
+    /// The conversion is implicit because this is just a semantic change.
+    pub implicit init(from string: String<in: Allocator>) {
+        self.string = string
+    }
+}

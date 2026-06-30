@@ -1,0 +1,90 @@
+module core
+
+import core.memory
+
+///
+pub struct Box<of: Inner, in: Allocator = DefaultAllocator>: not Copyable
+where
+    Allocator: core.memory.Allocator
+{
+    pub let raw: Pointer<to: Inner>
+    pub(get) let mut allocator: Allocator
+
+    pub init(_ inner: Inner, in allocator: Allocator) {
+        self.raw = unsafe self.allocator.allocate()
+        unsafe self.raw.initialize(to: inner)
+        self.allocator = allocator
+    }
+
+    pub init(_ inner: Inner) where Allocator: Defaultable {
+        self.init(inner, in: .init())
+    }
+
+    deinit {
+        unsafe self.raw.deinitialize()
+        unsafe allocator.deallocate(self.raw)
+    }
+
+    /// Allows reading the inner type.
+    pub get(&self) -> Inner 'self {
+        unsafe self.raw.get()
+    }
+
+    /// Allows replacing the inner type.
+    pub set(mut &self, _ value: Inner) {
+        unsafe self.raw.set(value)
+    }
+
+    /// Allows mutating the inner type.
+    pub mut(mut &self, _ mutation: (value: mut &Inner) -> ()) {
+        unsafe self.raw.mut(mutation)
+    }
+
+    /// Recovers a `Box` from an erased opaque pointer.
+    /// The erased pointer has to be one that was previously erased
+    /// from the same instantiation of the `Box` type.
+    pub unsafe init(recover erased: OpaquePointer, in allocator: Allocator) {
+        self.raw = erased.recover()
+        self.allocator = allocator
+    }
+
+    /// Recovers a `Box` from a raw pointer.
+    /// The raw pointer has to be one that was previously erased
+    /// from the same instantiation of the `Box` type.
+    pub unsafe init(recover raw: Pointer<to: Inner>, in allocator: Allocator) {
+        self.raw = raw
+        self.allocator = allocator
+    }
+
+    /// Recovers a `Box` from an erased opaque pointer.
+    /// The erased pointer has to be one that was previously erased
+    /// from the same instantiation of the `Box` type.
+    pub unsafe init(recover erased: OpaquePointer) where Allocator: Defaultable {
+        self.raw = erased.recover()
+        self.allocator = .init()
+    }
+
+    /// Recovers a `Box` from a raw pointer.
+    /// The raw pointer has to be one that was previously erased
+    /// from the same instantiation of the `Box` type.
+    pub unsafe init(recover raw: Pointer<to: Inner>) where Allocator: Defaultable {
+        self.raw = raw
+        self.allocator = .init()
+    }
+
+    /// Returns the underlying raw pointer.
+    /// The pointer can only be freed with the same allocator,
+    /// generally by recovering a box from the pointer and letting it deinitialize.
+    pub deinit fun to_raw(self) -> Pointer<to: Inner> {
+        self.raw
+    }
+
+    /// Returns the underlying raw pointer.
+    /// The pointer can only be freed with the same allocator,
+    /// generally by recovering a box from the pointer and letting it deinitialize.
+    pub deinit fun erase(self) -> OpaquePointer {
+        self.raw.erase()
+    }
+}
+
+extend Box: unsafe Sendable where Inner: Sendable and Allocator: Sendable

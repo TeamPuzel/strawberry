@@ -425,7 +425,7 @@ There are three kinds of loops in the language.
 - for (monadic loop)
 
 The manual loop simply iterates indefinitely:
-```
+```str
 loop {
     print("I will forever print :)")
 }
@@ -452,7 +452,7 @@ The while loop iterates for as long as the
 conditional pattern matches. The rules here
 are identical to conditional expressions.
 
-```
+```str
 // That's about it, there is not much else
 // to these loops. It's just more often than not
 // far easier to read than the manual loop with
@@ -473,7 +473,7 @@ There is a slight added constraint depending on
 the type of the alternative discussed later.
 
 The for loop looks like this:
-```
+```str
 for element in iterator {
     print(element)
 }

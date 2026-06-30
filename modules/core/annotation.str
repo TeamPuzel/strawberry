@@ -70,6 +70,19 @@ pub annotation MemoryLayout {
     }
 }
 
+/// Annotates a type with a hint to use a concrete memory alignment. Backends that provide
+/// interoperability with a foreign ABI must respect these hints,
+/// but they should not be relied upon. Strawberry is abstract and
+/// does not define memory representation at all so this is primarily
+/// intended for foreign binding code.
+pub annotation MemoryAlignment {
+    pub let value: Integer
+
+    pub init(_ value: Integer) {
+        self.value = value
+    }
+}
+
 /// Annotates a function with a hint to its cost, intended
 /// to assist inlining analysis.
 pub annotation Cost {
@@ -82,10 +95,19 @@ pub annotation Cost {
 
 /// Used for availability analysis.
 pub annotation Available {
-    pub let environment: String
+    pub let requirement: String
 
-    pub init(on environment: String) {
-        self.environment = environment
+    pub init(_ requirement: String) {
+        self.requirement = requirement
+    }
+}
+
+/// Used for availability analysis.
+pub annotation Deprecated {
+    pub let reason: String
+
+    pub init(because reason: String) {
+        self.reason = reason
     }
 }
 

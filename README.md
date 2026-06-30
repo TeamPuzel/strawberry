@@ -36,14 +36,14 @@ interpreting it, anything really.
 
 This means that this is a valid 6502 program:
 
-```
+```str
 module main
 
 import ps2
 
 @Extern
 @Convention("C")
-@unsafe SymbolName("print_number")
+@!SymbolName("print_number")
 unsafe fun print(number: UInt<8>)
 
 @Entry

@@ -1,1 +1,5 @@
 module strawberry.backend.ps2
+
+pub class Ps2Backend: Backend {
+
+}

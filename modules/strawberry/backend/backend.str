@@ -1,1 +1,5 @@
 module strawberry.backend
+
+pub base class Backend: Box<of: Self> {
+
+}

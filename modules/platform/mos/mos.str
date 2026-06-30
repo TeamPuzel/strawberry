@@ -1,0 +1,15 @@
+module platform.mos
+
+extend Pointer {
+    pub const init(segment: String, offset: Integer) {
+        self.init(raw: #mos.pointer_in_segment_at_offset(segment, offset))
+    }
+
+    pub const init(segment: String, value: Pointee) {
+        self.init(raw: #mos.pointer_in_segment_of_value(segment, value))
+    }
+
+    pub init(address: UInt) {
+        self.init(raw: #mos.pointer_address(address)
+    }
+}

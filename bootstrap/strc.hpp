@@ -41,9 +41,11 @@
 #include "primitive.hpp"
 
 namespace str {
+    /// C++ nonsense for discount pattern matching with `std::visit`.
     template <typename... Ts> struct overloaded : Ts... { using Ts::operator()...; };
     template <typename... Ts> overloaded(Ts...) -> overloaded<Ts...>;
 
+    /// Utility for `std::scope_exit` which still hasn't materialized in clang.
     template <typename Fn> class ScopeExit final {
         Fn fn;
 
@@ -58,47 +60,73 @@ namespace str {
         constexpr ~ScopeExit() { fn(); }
     };
 
-
+    /// A single valid token of the Strawberry language.
     class Token final {
       public:
+        /// An erroneous token produced as provenance when the token stream throws a diagnostic.
         struct Error final {};
+        /// Encodes `\n`
         struct NewLine final {};
+        /// Encodes `(`
         struct ParenLeft final {};
+        /// Encodes `)`
         struct ParenRight final {};
+        /// Encodes `{`
         struct BraceLeft final {};
+        /// Encodes `}`
         struct BraceRight final {};
+        /// Encodes `[`
         struct BracketLeft final {};
+        /// Encodes `]`
         struct BracketRight final {};
+        /// Encodes `|`
+        struct Pipe final {};
+        /// Encodes `,`
         struct Comma final {};
+        /// Encodes `:`
         struct Colon final {};
+        /// Encodes `;`
         struct SemiColon final {};
+        /// Encodes `@`
         struct At final {};
+        /// Encodes `#`
         struct Pound final {};
+        /// Encodes `'`
         struct Tick final {};
+        /// Encodes `.`
         struct Dot final {};
+        /// Encodes `->`
         struct Arrow final {};
 
+        /// A semantic comment such as documentation.
         struct Comment final {
             std::string_view selector;
             std::string_view content;
         };
 
+        /// A number literal.
         struct Number final {
             std::string_view content;
         };
 
+        /// A single line string.
         struct String final {
             std::string_view content;
         };
 
+        /// A single line chunk of a multiline string.
         struct MultilineString final {
             std::string_view content;
         };
 
+        /// A pure identifier, used for a wide range of constructs including keywords.
         struct Identifier final {
             std::string_view content;
+            bool leading_whitespace;
+            bool trailing_whitespace;
         };
 
+        /// A symbolic identifier, mainly used by operators except for `and` `or` and `not`.
         struct Symbolic final {
             std::string_view content;
             bool leading_whitespace;
@@ -114,6 +142,7 @@ namespace str {
             BraceRight,
             BracketLeft,
             BracketRight,
+            Pipe,
             Comma,
             Colon,
             SemiColon,
@@ -161,6 +190,7 @@ namespace str {
             }
         }
 
+        /// For a symbolic or pure identifier it answers the content, otherwise `std::nullopt`
         auto identifier_content() const -> std::optional<std::string_view> {
             return std::visit(overloaded {
                 [] (Token::Identifier tok) -> std::optional<std::string_view> { return tok.content; },
@@ -188,13 +218,16 @@ namespace str {
         {}
     };
 
+    /// A unified domain describing where in the source unit text (if anywhere) a construct originates.
     class Provenance final {
       public:
+        /// An exact token span.
         struct Span final {
             Token start;
             Token end;
         };
 
+        /// A generic source unit provenance uncertain about the exact origin.
         struct Source final {
             std::string_view source;
         };
@@ -210,18 +243,59 @@ namespace str {
         constexpr Provenance(Token token) noexcept : Provenance(token, token) {}
 
         constexpr explicit Provenance(std::string_view source) noexcept : data(Source(source)) {}
+
+        /// Utility for merging provenances together if possible.
+        constexpr Provenance(Provenance start, Provenance end) noexcept : Provenance(merge(start, end)) {}
+
+      private:
+        static constexpr auto merge(Provenance start, Provenance end) -> Provenance {
+            if (std::holds_alternative<Span>(start.data) and std::holds_alternative<Span>(end.data)) {
+                return Provenance(
+                    std::get<Provenance::Span>(start.data).start,
+                    std::get<Provenance::Span>(end.data).end
+                );
+            } else {
+                return start;
+            }
+        }
     };
 
+    /// A compile diagnostic, used to communicate issues during the compilation process.
+    ///
+    /// Diagnostics are all associated with provenance information identifying as precisely as possible
+    /// where they come from.
     class Diagnostic final : std::exception {
       public:
-        enum class Severity { Error, Warning, Info, Runtime } severity;
+        /// Determines the general cause of the diagnostic and how fatal it is for compilation.
+        enum class Severity {
+            /// Error severity represents an unrecoverable erroneous state preventing the program from compiling.
+            ///
+            /// It should use the color red when presented visually.
+            Error,
+            /// Warning severity represents warnings, recoverable issues that potentially require attention.
+            ///
+            /// It should use the color yellow when presented visually.
+            Warning,
+            /// Info severity represents less critical diagnostics such as linting.
+            ///
+            /// It should use the color blue when presented visually.
+            Info,
+            /// Runtime severity is a special severity intended for surfacing runtime diagnostics when
+            /// operating in some sort of managed debug mode, such as runtime concurrency checks.
+            ///
+            /// It should use the color purple when presented visually.
+            Runtime
+        } severity;
+
         Provenance provenance;
         std::string reason;
         std::optional<std::string> help;
 
+        /// Constructs a diagnostic with a reason.
         constexpr Diagnostic(Severity severity, Provenance provenance, std::string reason) noexcept
             : severity(severity), provenance(provenance), reason(std::move(reason)) {}
 
+        /// Constructs a diagnostic with a reason and helpful description.
         constexpr Diagnostic(Severity severity, Provenance provenance, std::string reason, std::string help) noexcept
             : severity(severity), provenance(provenance), reason(std::move(reason)), help(std::move(help)) {}
 
@@ -229,34 +303,42 @@ namespace str {
             return reason.c_str();
         }
 
+        /// Convenience for a diagnostic with error severity.
         static constexpr Diagnostic error(Provenance provenance, std::string reason) noexcept {
             return Diagnostic(Severity::Error, provenance, std::move(reason));
         }
 
+        /// Convenience for a diagnostic with warning severity.
         static constexpr Diagnostic warning(Provenance provenance, std::string reason) noexcept {
             return Diagnostic(Severity::Warning, provenance, std::move(reason));
         }
 
+        /// Convenience for a diagnostic with info severity.
         static constexpr Diagnostic info(Provenance provenance, std::string reason) noexcept {
             return Diagnostic(Severity::Info, provenance, std::move(reason));
         }
 
+        /// Convenience for a diagnostic with runtime severity.
         static constexpr Diagnostic runtime(Provenance provenance, std::string reason) noexcept {
             return Diagnostic(Severity::Runtime, provenance, std::move(reason));
         }
 
+        /// Convenience for a diagnostic with error severity, including help text.
         static constexpr Diagnostic error(Provenance provenance, std::string reason, std::string help) noexcept {
             return Diagnostic(Severity::Error, provenance, std::move(reason), std::move(help));
         }
 
+        /// Convenience for a diagnostic with warning severity, including help text.
         static constexpr Diagnostic warning(Provenance provenance, std::string reason, std::string help) noexcept {
             return Diagnostic(Severity::Warning, provenance, std::move(reason), std::move(help));
         }
 
+        /// Convenience for a diagnostic with info severity, including help text.
         static constexpr Diagnostic info(Provenance provenance, std::string reason, std::string help) noexcept {
             return Diagnostic(Severity::Info, provenance, std::move(reason), std::move(help));
         }
 
+        /// Convenience for a diagnostic with runtime severity, including help text.
         static constexpr Diagnostic runtime(Provenance provenance, std::string reason, std::string help) noexcept {
             return Diagnostic(Severity::Runtime, provenance, std::move(reason), std::move(help));
         }
@@ -273,22 +355,23 @@ template <> struct std::formatter<str::Token, char> {
     constexpr auto format(str::Token const& token, std::format_context& ctx) const {
         using namespace str;
         return std::visit(overloaded {
-            [&ctx] (Token::Error _)        { return std::format_to(ctx.out(), "Error"); },
-            [&ctx] (Token::NewLine _)      { return std::format_to(ctx.out(), "NewLine"); },
-            [&ctx] (Token::ParenLeft _)    { return std::format_to(ctx.out(), "ParenLeft"); },
-            [&ctx] (Token::ParenRight _)   { return std::format_to(ctx.out(), "ParenRight"); },
-            [&ctx] (Token::BraceLeft _)    { return std::format_to(ctx.out(), "BraceLeft"); },
-            [&ctx] (Token::BraceRight _)   { return std::format_to(ctx.out(), "BraceRight"); },
-            [&ctx] (Token::BracketLeft _)  { return std::format_to(ctx.out(), "BracketLeft"); },
+            [&ctx] (Token::Error _)        { return std::format_to(ctx.out(), "Error");        },
+            [&ctx] (Token::NewLine _)      { return std::format_to(ctx.out(), "NewLine");      },
+            [&ctx] (Token::ParenLeft _)    { return std::format_to(ctx.out(), "ParenLeft");    },
+            [&ctx] (Token::ParenRight _)   { return std::format_to(ctx.out(), "ParenRight");   },
+            [&ctx] (Token::BraceLeft _)    { return std::format_to(ctx.out(), "BraceLeft");    },
+            [&ctx] (Token::BraceRight _)   { return std::format_to(ctx.out(), "BraceRight");   },
+            [&ctx] (Token::BracketLeft _)  { return std::format_to(ctx.out(), "BracketLeft");  },
             [&ctx] (Token::BracketRight _) { return std::format_to(ctx.out(), "BracketRight"); },
-            [&ctx] (Token::Comma _)        { return std::format_to(ctx.out(), "Comma"); },
-            [&ctx] (Token::Colon _)        { return std::format_to(ctx.out(), "Colon"); },
-            [&ctx] (Token::SemiColon _)    { return std::format_to(ctx.out(), "SemiColon"); },
-            [&ctx] (Token::At _)           { return std::format_to(ctx.out(), "At"); },
-            [&ctx] (Token::Pound _)        { return std::format_to(ctx.out(), "Pound"); },
-            [&ctx] (Token::Tick _)         { return std::format_to(ctx.out(), "Tick"); },
-            [&ctx] (Token::Dot _)          { return std::format_to(ctx.out(), "Dot"); },
-            [&ctx] (Token::Arrow _)        { return std::format_to(ctx.out(), "Arrow"); },
+            [&ctx] (Token::Pipe _)         { return std::format_to(ctx.out(), "Pipe");         },
+            [&ctx] (Token::Comma _)        { return std::format_to(ctx.out(), "Comma");        },
+            [&ctx] (Token::Colon _)        { return std::format_to(ctx.out(), "Colon");        },
+            [&ctx] (Token::SemiColon _)    { return std::format_to(ctx.out(), "SemiColon");    },
+            [&ctx] (Token::At _)           { return std::format_to(ctx.out(), "At");           },
+            [&ctx] (Token::Pound _)        { return std::format_to(ctx.out(), "Pound");        },
+            [&ctx] (Token::Tick _)         { return std::format_to(ctx.out(), "Tick");         },
+            [&ctx] (Token::Dot _)          { return std::format_to(ctx.out(), "Dot");          },
+            [&ctx] (Token::Arrow _)        { return std::format_to(ctx.out(), "Arrow");        },
 
             [&ctx] (Token::Comment tok) {
                 return std::format_to(ctx.out(), "Comment(selector: {}, content: {})", tok.selector, tok.content);
@@ -318,6 +401,8 @@ template <> struct std::formatter<str::Token, char> {
 };
 
 namespace str {
+    /// A validated stream of Strawberry tokens with very powerful pattern matching templates and other utilities.
+    /// All tokens it produces are bound by the lifetime of the provided text and source views it operates on.
     class TokenStream final {
         std::string_view text;
         std::string_view source;
@@ -329,10 +414,12 @@ namespace str {
         std::vector<Token> provenance_stack;
 
       public:
+        /// Answers a view of the text of the source unit being tokenized.
         auto get_text() const -> std::string_view {
             return text;
         }
 
+        /// Answers the source identity of the source unit being tokenized.
         auto get_source() const -> std::string_view {
             return source;
         }
@@ -359,6 +446,7 @@ namespace str {
             : text(text), source(source){}
 
       public:
+        /// A scope guard ensuring that
         class ProvenanceScope final {
             friend class TokenStream;
 
@@ -378,35 +466,46 @@ namespace str {
                     throw std::logic_error("unconsumed provenance stack scope");
             }
 
-            auto take() -> Provenance {
+            /// Balances the span answering the resulting provenance at the current point in time.
+            [[nodiscard]] auto take() -> Provenance {
                 auto result = tokens->unchecked_span_pop();
                 tokens = nullptr;
                 return result;
             }
         };
 
+        /// A utility for checked provenance scopes. Because unbalanced provenance stack usage would completely
+        /// break all provenance information, and forgetting to discard one is also erroneous, the answered
+        /// provenance scope will throw unless its `take` sink method is used to obtain or explicitly discard the span.
+        ///
+        /// Start tracking a span with a provenance scope
         [[nodiscard]] auto span() -> ProvenanceScope {
             unchecked_span_push();
             return ProvenanceScope(this);
         }
 
       private:
+        /// Consumes a specified count of characters.
         void consume(u32 count = 1) {
             index += count;
             column += count;
             consumed_count += count;
         }
 
+        /// Rewinds a specified count of characters.
         void rewind(u32 count = 1) {
             index -= count;
             column -= count;
             consumed_count -= count;
         }
 
+        /// Answers the current character. A bounds check is performed on access.
         auto at() const -> char {
             return text.at(index);
         }
 
+        /// Answers a character at an index in the text,
+        /// or if the access was out of bounds it answers `std::nullopt` instead.
         auto at(usize index) const -> std::optional<char> {
             if (index < text.size()) {
                 return text[index];
@@ -415,28 +514,40 @@ namespace str {
             }
         }
 
+        /// Takes a count of characters and aswers a string view corresponding to the captured character span,
+        /// or less if the stream ended early.
         auto take(usize count) -> std::string_view {
             auto result = text.substr(index, count);
             consume(count);
             return result;
         }
 
+        /// Takes character until the sentinel value is matched or the stream ends,
+        /// then answers a string view corresponding to the captured character span.
         auto take_until(char sentinel) -> std::string_view {
             usize count = 0;
             for (usize i = index; i < text.size() and text[i] != sentinel; i += 1) count += 1;
             return take(count);
         }
 
+        /// Takes characters while the predicate answers true for the current character or the stream ends,
+        /// then answers a string view corresponding to the captured character span.
+        ///
+        /// A very useful utility for all tokens with a content span.
         auto take_until(auto&& predicate) -> std::string_view {
             usize count = 0;
             for (usize i = index; i < text.size() and not std::invoke(predicate, text[i]); i += 1) count += 1;
             return take(count);
         }
 
+        /// Answers true if the provided character matches the current character exactly.
+        /// Answers false if it doesn't or if the stream is finished.
         auto is(char pattern) const -> bool {
             return text.at(index) == pattern;
         }
 
+        /// Answers true if the provided pattern matches exactly the current and upcoming characters.
+        /// If the stream is finished it answers false.
         auto are(std::string_view pattern) const -> bool {
             for (u32 i = 0; i < pattern.size(); i += 1)
                 if (i + index >= text.size() or text.at(i + index) != pattern[i])
@@ -444,11 +555,14 @@ namespace str {
             return true;
         }
 
+        /// Answers true if the current character is within the provided inclusive range.
+        /// Used to check for alphanumeric ranges.
         auto in_range(char from, char to) const -> bool {
             auto value = text.at(index);
             return value >= from and value <= to;
         }
 
+        /// Answers true if the current character is valid for identifiers.
         auto valid_ident() const -> bool {
             return
                 not in_range(0, 31) and not is(127) and
@@ -458,10 +572,12 @@ namespace str {
                 not is(']') and not is('{') and not is('}') and not is('`');
         }
 
+        /// Answers true if the current character is valid for number literals.
         auto valid_digit() const -> bool {
             return in_range('0', '9') or in_range('A', 'Z') or in_range('a', 'z');
         }
 
+        /// Answers true if the current character is valid for symbolic identifiers.
         auto valid_symbolic_ident() const -> bool {
             return
                 valid_ident() and
@@ -469,14 +585,21 @@ namespace str {
                 not is('_');
         }
 
+        /// Answers true if the current character is valid for pure identifiers.
         auto valid_pure_ident() const -> bool {
             return in_range('0', '9') or in_range('A', 'Z') or in_range('a', 'z') or is('_');
         }
 
+        /// Discard processed characters without yielding a token.
         void no_yield() {
             consumed_count = 0;
         }
 
+        /// Consume and merge automatically derived provenance information. Token provenance
+        /// is their tail and a count of characters they consumed, so they are actually counted backwards.
+        ///
+        /// This is the primary and only correct way to maintain state while yielding a new token from the stream
+        /// safely, tokens shouldn't be created otherwise without reason.
         template <typename T, typename... Arg> [[nodiscard]] auto yield(Arg... arg) -> Token {
             auto token = Token(
                 source,
@@ -493,6 +616,7 @@ namespace str {
             return token;
         }
 
+        /// Counts a line in the internal provenance tracking state.
         void end_line() {
             line += 1;
             column = 1;
@@ -518,20 +642,42 @@ namespace str {
             }
         }
 
-        /// Generic provenance for the file itself, with unspecified location.
+        /// Provenance for the last token.
+        auto last_provenance() const -> Provenance {
+            if (last_token) {
+                return *last_token;
+            } else {
+                return Provenance(source);
+            }
+        }
+
+        /// Generic provenance for the source unit itself, with unspecified location.
         auto generic_provenance() const -> Provenance {
             return Provenance(source);
         }
 
+        /// Answers generic provenance for the purpose of throwing in unimplemented branches of the parser.
         auto todo() -> Diagnostic {
             return Diagnostic::error(fallthrough_provenance(), "todo");
         }
 
+        /// Answers true if there are no more tokens left in the stream.
         auto finished() const -> bool {
             return index >= text.size();
         }
 
-        auto next() -> std::optional<Token> { start:
+        /// This is the primary interface of the token stream. While there are still characters left in the stream
+        /// it will keep returning them, afterwards it just returns `std::nullopt`.
+        ///
+        /// The parser shouldn't call this directly, instead there are many helper mathods
+        /// for matching patterns on the next token of the stream both destructively or nondestructively.
+        /// A syntax highlighter could however use this method to iterate through the tokens for a line of code,
+        /// because the Strawberry grammar does not have any multiline tokens.
+        ///
+        /// The method also automatically discards non semantic comments and throws diagnostics
+        /// for many definite errors, including use of tabs or unterminated tokens.
+        [[nodiscard]] auto next() -> std::optional<Token> { start:
+            // Tail recursion is not guaranteed in C++ so we use gotos to do it manually.
             if (finished()) return std::nullopt;
 
             if (is(' ')) {
@@ -551,6 +697,8 @@ namespace str {
                 consume(); return yield<Token::BracketLeft>();
             } else if (is(']')) {
                 consume(); return yield<Token::BracketRight>();
+            } else if (is('|')) {
+                consume(); return yield<Token::Pipe>();
             } else if (is(',')) {
                 consume(); return yield<Token::Comma>();
             } else if (is(':')) {
@@ -690,20 +838,29 @@ namespace str {
             } else if (valid_pure_ident()) {
                 usize count = 0;
 
+                bool leading_whitespace = at(index - 1)
+                    .transform([] (char c) { return c == ' ' or c == '\n'; })
+                    .value_or(true);
+
                 do {
                     count += 1;
                     consume();
                 } while (not finished() and valid_pure_ident());
 
+                bool trailing_whitespace = at(index)
+                    .transform([] (char c) { return c == ' ' or c == '\n' or c == ',' or c == '>' or c == ')'; })
+                    .value_or(true);
+
                 rewind(count);
                 auto content = take(count);
 
-                return yield<Token::Identifier>(content);
+                return yield<Token::Identifier>(content, leading_whitespace, trailing_whitespace);
             } else {
                 throw Diagnostic::error(yield<Token::Error>(), std::format("unexpected character: {}", at()));
             }
         }
 
+        /// Peek for a future token non destructively.
         auto peek(u32 offset = 1) -> std::optional<Token> {
             auto index = this->index;
             auto line = this->line;
@@ -725,10 +882,12 @@ namespace str {
             return result;
         }
 
+        /// Drop a count of tokens.
         void drop(u32 count = 1) {
             for (u32 i = 0; i < count; i += 1) last_token = next();
         }
 
+        /// Drop tokens while they satisfy a predicate.
         void drop_while(auto&& predicate) {
             std::optional token = peek();
             while (token and std::invoke(predicate, std::as_const(*token))) {
@@ -737,6 +896,7 @@ namespace str {
             }
         }
 
+        /// Match a token of specified type.
         template <typename T> auto match() -> std::optional<Token> {
             std::optional token = peek();
 
@@ -748,6 +908,7 @@ namespace str {
             }
         }
 
+        /// Match an identifier token of specified type with an exact content pattern.
         template <typename T> auto match(std::string_view content) -> std::optional<Token> {
             std::optional token = peek();
 
@@ -759,6 +920,7 @@ namespace str {
             }
         }
 
+        /// Match a token with an additional predicate.
         template <typename T, typename F> auto match(F&& predicate) -> std::optional<Token>
         requires
             std::invocable<F, T const&>
@@ -777,14 +939,20 @@ namespace str {
             }
         }
 
+        /// Match a token of specified type.
+        /// Unwraps the result to the specified token type.
         template <typename T> auto match_as() -> std::optional<T> {
             return match<T>().transform(&Token::get<T>);
         }
 
+        /// Match an identifier token of specified type with an exact content pattern.
+        /// Unwraps the result to the specified token type.
         template <typename T> auto match_as(std::string_view content) -> std::optional<T> {
             return match<T>(content).transform(&Token::get<T>);
         }
 
+        /// Match a token with an additional predicate.
+        /// Unwraps the result to the specified token type.
         template <typename T, typename F> auto match_as(F&& predicate) -> std::optional<T> {
             return match<T>(std::forward<F>(predicate)).transform(&Token::get<T>);
         }
@@ -799,6 +967,8 @@ namespace str {
             }
         }
 
+        /// Like matching but does not contribute to the tail of a provenance span.
+        /// Used mainly to prevent trailing newlines from being tracked by diagnostics.
         template <typename T> auto allow(std::string_view content) -> std::optional<Token> {
             std::optional token = peek();
 
@@ -809,6 +979,8 @@ namespace str {
             }
         }
 
+        /// Like matching but does not contribute to the tail of a provenance span.
+        /// Used mainly to prevent trailing newlines from being tracked by diagnostics.
         template <typename T, typename F> auto allow(F&& predicate) -> std::optional<Token>
         requires
             std::invocable<F, T const&>
@@ -826,18 +998,25 @@ namespace str {
             }
         }
 
+        /// Like matching but does not contribute to the tail of a provenance span.
+        /// Used mainly to prevent trailing newlines from being tracked by diagnostics.
         template <typename T> auto allow_as(std::string_view content) -> std::optional<T> {
             return allow<T>(content).transform(&Token::get<T>);
         }
 
+        /// Like matching but does not contribute to the tail of a provenance span.
+        /// Used mainly to prevent trailing newlines from being tracked by diagnostics.
         template <typename T> auto allow_as() -> std::optional<T> {
             return allow<T>().transform(&Token::get<T>);
         }
 
+        /// Like matching but does not contribute to the tail of a provenance span.
+        /// Used mainly to prevent trailing newlines from being tracked by diagnostics.
         template <typename T, typename F> auto allow_as(F&& predicate) -> std::optional<T> {
             return allow<T>(std::forward<F>(predicate)).transform(&Token::get<T>);
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T> auto expect() -> Token {
             std::optional token = match<T>();
 
@@ -855,6 +1034,7 @@ namespace str {
             }
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T> auto expect(std::string_view content) -> Token {
             std::optional token = match<T>(content);
 
@@ -881,6 +1061,7 @@ namespace str {
             }
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T, typename F> auto expect(F&& predicate) -> Token {
             std::optional token = match<T>(std::forward<F>(predicate));
 
@@ -902,18 +1083,22 @@ namespace str {
             }
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T> auto expect_as() -> T {
             return expect<T>().template get<T>();
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T> auto expect_as(std::string_view content) -> T {
             return expect<T>(content).template get<T>();
         }
 
+        /// Like matching but unwraps the token and throws a diagnostic otherwise.
         template <typename T, typename F> auto expect_as(F&& predicate) -> T {
             return expect<T>(std::forward<F>(predicate)).template get<T>();
         }
 
+        /// Like matching but does not consume the token.
         template <typename T> auto peek_match() -> std::optional<Token> {
             std::optional token = peek();
 
@@ -924,6 +1109,7 @@ namespace str {
             }
         }
 
+        /// Like matching but does not consume the token.
         template <typename T> auto peek_match(std::string_view content) -> std::optional<Token> {
             std::optional token = peek();
 
@@ -934,6 +1120,7 @@ namespace str {
             }
         }
 
+        /// Like matching but does not consume the token.
         template <typename T, typename F> auto peek_match(F&& predicate) -> std::optional<Token>
         requires
             std::invocable<F, T const&>
@@ -951,18 +1138,22 @@ namespace str {
             }
         }
 
+        /// Like matching but does not consume the token.
         template <typename T> auto peek_match_as() -> std::optional<T> {
             return peek_match<T>().transform(&Token::get<T>);
         }
 
+        /// Like matching but does not consume the token.
         template <typename T> auto peek_match_as(std::string_view content) -> std::optional<T> {
             return peek_match<T>(content).transform(&Token::get<T>);
         }
 
+        /// Like matching but does not consume the token.
         template <typename T, typename F> auto peek_match_as(F&& predicate) -> std::optional<T> {
             return peek_match<T>(std::forward<F>(predicate)).transform(&Token::get<T>);
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T> auto peek_expect() -> Token {
             std::optional token = peek_match<T>();
 
@@ -980,6 +1171,7 @@ namespace str {
             }
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T> auto peek_expect(std::string_view content) -> Token {
             std::optional token = peek_match<T>(content);
 
@@ -1006,6 +1198,7 @@ namespace str {
             }
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T, typename F> auto peek_expect(F&& predicate) -> Token {
             std::optional token = peek_match<T>(std::forward<F>(predicate));
 
@@ -1027,14 +1220,17 @@ namespace str {
             }
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T> auto peek_expect_as() -> T {
             return peek_expect<T>().template get<T>();
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T> auto peek_expect_as(std::string_view content) -> T {
             return peek_expect<T>(content).template get<T>();
         }
 
+        /// Like expecting but does not consume the token.
         template <typename T, typename F> auto peek_expect_as(F&& predicate) -> T {
             return peek_expect<T>(std::forward<F>(predicate)).template get<T>();
         }
@@ -1046,36 +1242,42 @@ namespace str {
 }
 
 namespace str {
+    constexpr usize GENERIC_PRECEDENCE = 7;
+    constexpr usize PREFIX_PRECEDENCE = 1000;
+
     constexpr auto precedence(std::string_view pattern) -> usize {
-        if (pattern == "=")   return 0;
+        if (pattern == "=")   return 0; // Assignment. Not needed here? It is a right associative postfix expression.
 
-        if (pattern == "or")  return 1;
-        if (pattern == "and") return 2;
+        if (pattern == "or")  return 1; // Logical or.
+        if (pattern == "and") return 2; // Logical and.
 
-        if (pattern == "==")  return 3;
-        if (pattern == "!=")  return 3;
+        if (pattern == "==")  return 3; // Equal to.
+        if (pattern == "!=")  return 3; // Not equal to.
 
-        if (pattern == "<")   return 4;
-        if (pattern == "<=")  return 4;
-        if (pattern == ">")   return 4;
-        if (pattern == ">=")  return 4;
+        if (pattern == "<")   return 4; // Less than.
+        if (pattern == "<=")  return 4; // Less than or equal to.
+        if (pattern == ">")   return 4; // Greater than.
+        if (pattern == ">=")  return 4; // Greater than or equal to.
 
-        if (pattern == "+")   return 5;
-        if (pattern == "-")   return 5;
+        if (pattern == "+")   return 5; // Addition operator.
+        if (pattern == "-")   return 5; // Subtraction operator.
 
-        if (pattern == "*")   return 6;
-        if (pattern == "/")   return 6;
-        if (pattern == "%")   return 6;
+        if (pattern == "*")   return 6; // Multiplication operator.
+        if (pattern == "/")   return 6; // True division operator.
+        if (pattern == "\\")  return 6; // Pseudo division operator.
+        if (pattern == "%")   return 6; // Remainder operator.
 
         return 7;
     }
 
+    /// Determines the role of an operator in an expression.
     enum class OperatorRole {
         Infix,
         Prefix,
         Postfix
     };
 
+    /// Answers the role of an operator based on associated whitespace.
     inline auto operator_role(Token token) -> OperatorRole {
         return std::visit(overloaded {
             // Symbolic operators are determined to be infix, prefix or postfix based on their whitespace.
@@ -1099,7 +1301,14 @@ namespace str {
             },
             // We don't actually try resolve non infix pure identifier operators here,
             // the other roles are a fallback for prefix and postfix parsing instead.
-            [] (Token::Identifier identifier) -> OperatorRole { return OperatorRole::Infix; },
+            [token] (Token::Identifier identifier) -> OperatorRole {
+                bool lead = identifier.leading_whitespace;
+                bool trail = identifier.trailing_whitespace;
+
+                if (lead and trail) return OperatorRole::Infix;
+
+                throw Diagnostic::error(token, "infix operators without whitespace are only allowed for dot operators");
+            },
             // Arbitrary tokens can't be used as operators, this should never happen.
             [] (auto other) -> OperatorRole {
                 throw std::logic_error("attempt to query operator role of non identifier token");
@@ -1107,6 +1316,7 @@ namespace str {
         }, token.data);
     }
 
+    /// A checked qualified path.
     class Path final {
         std::string data;
 
@@ -1182,6 +1392,8 @@ namespace str {
         }
     };
 
+    /// A syntax tree structure used to compose expressions within declarations.
+    /// Everything outside the rigid declaration grammar is an expression in this language.
     class Expr final {
       public:
         using ExprBox = std::unique_ptr<Expr>;
@@ -1194,6 +1406,14 @@ namespace str {
             return std::make_unique<Expr>(std::move(expr));
         }
 
+        static ExprBox box(ExprBox& expr) {
+            return std::move(expr);
+        }
+
+        static ExprBox box(ExprBox&& expr) {
+            return std::move(expr);
+        }
+
         struct Infix final {
             std::string_view name;
             ExprBox lhs;
@@ -1201,20 +1421,11 @@ namespace str {
 
             Infix(
                 std::string_view name,
-                Expr lhs,
-                Expr rhs
+                auto lhs,
+                auto rhs
             ) : name(name)
               , lhs(box(lhs))
               , rhs(box(rhs))
-            {}
-
-            Infix(
-                std::string_view name,
-                ExprBox lhs,
-                ExprBox rhs
-            ) : name(name)
-              , lhs(std::move(lhs))
-              , rhs(std::move(rhs))
             {}
         };
 
@@ -1224,16 +1435,9 @@ namespace str {
 
             Prefix(
                 std::string_view name,
-                Expr rhs
+                auto rhs
             ) : name(name)
               , rhs(box(rhs))
-            {}
-
-            Prefix(
-                std::string_view name,
-                ExprBox rhs
-            ) : name(name)
-              , rhs(std::move(rhs))
             {}
         };
 
@@ -1243,25 +1447,17 @@ namespace str {
 
             Postfix(
                 std::string_view name,
-                Expr lhs
+                auto lhs
             ) : name(name)
               , lhs(box(lhs))
             {}
-
-            Postfix(
-                std::string_view name,
-                ExprBox lhs
-            ) : name(name)
-              , lhs(std::move(lhs))
-            {}
         };
 
-        struct Projection final {
+        struct [[deprecated]] Projection final {
             enum class Kind { Mutating, Borrowing } kind;
             ExprBox expr;
 
-            Projection(Kind kind, Expr expr) : kind(kind), expr(box(expr)) {}
-            Projection(Kind kind, ExprBox expr) : kind(kind), expr(std::move(expr)) {}
+            Projection(Kind kind, auto expr) : kind(kind), expr(box(expr)) {}
         };
 
         struct Wildcard final {};
@@ -1272,8 +1468,8 @@ namespace str {
         };
 
         struct String final {
-            std::string_view literal;
-            explicit String(std::string_view literal) : literal(literal) {}
+            std::string content;
+            explicit String(std::string content) : content(content) {}
         };
 
         struct Boolean final {
@@ -1303,150 +1499,604 @@ namespace str {
             explicit Tuple(std::vector<Element> elements) : elements(std::move(elements)) {}
         };
 
+        struct Callable final {
+            ExprBox arguments;
+            std::optional<std::vector<ExprBox>> captures;
+            bool async;
+            std::optional<std::vector<ExprBox>> throws;
+            ExprBox return_type;
+
+            Callable(
+                auto arguments,
+                std::optional<std::vector<ExprBox>> captures,
+                bool async,
+                std::optional<std::vector<ExprBox>> throws,
+                auto return_type
+            ) : arguments(box(arguments))
+              , captures(std::move(captures))
+              , async(async)
+              , throws(std::move(throws))
+              , return_type(box(return_type))
+            {}
+        };
+
+        /// Generic subtype boolean expression.
+        ///
+        /// It can be used on anything.
+        /// ```
+        /// Never: Int // true
+        /// Int: Numeric // true
+        /// Float: Numeric // false
+        /// Int: Any // true
+        /// variable: Int // this works too
+        /// ```
+        ///
+        /// For classes it accounts for their hierarchy and works at runtime.
+        ///
+        /// In general this expression is used in type constraints, because it shapes the rigid type variable.
+        /// For example, this is how it could be used for generic constraints:
+        /// ```
+        /// // A where clause is a boolean condition filtering out the declaration based on a compile time boolean.
+        /// // Because this means types that do not subtype the Numeric category are rejected, the rigid type
+        /// // variable is now known to be Numeric and we are allowed to use its requirements, like the + operator.
+        /// fun foo<Bar>(bar: Bar) -> Bar where Bar: Numeric { bar + bar }
+        ///
+        /// // We can conditionally use it in the body but that will not filter the declaration itself,
+        /// // which is usually not desirable because it can't be overloaded.
+        /// fun foo<Bar>(bar: Bar) -> Bar {
+        ///     if Bar: Numeric then bar + bar else bar
+        /// }
+        /// ```
+        struct Subtype final {
+            ExprBox lhs;
+            ExprBox rhs;
+
+            Subtype(auto lhs, auto rhs) : lhs(box(lhs)), rhs(box(rhs)) {}
+        };
+
+        /// A set of annotations attached to an expression rather than declaration.
+        /// Mainly useful for annotating structural types like tuples or callables.
+        struct Annotations final {
+            struct Annotation final {
+                ExprBox annotation;
+                bool unsafe;
+
+                Annotation(auto annotation, bool unsafe) : annotation(box(annotation)), unsafe(unsafe) {}
+            };
+
+            std::vector<Annotation> annotations;
+            ExprBox expr;
+
+            Annotations(std::vector<Annotation> annotations, auto expr)
+                : annotations(std::move(annotations)), expr(box(expr)) {}
+        };
+
+        /// A variadic pack fold expression.
+        ///
+        /// They are useful for abstracting over variadic packs without immediately having to drop
+        /// down to a compile time loop.
+        ///
+        /// They have two forms depending on if they use an infix operator or comma:
+        /// - Tuple map expression: `(expr.toggle(), ...)`
+        /// - Reduction expression: `(expr + ...)`
+        struct Fold final {
+            struct CommaConjunction final {};
+            struct InfixConjunction final { std::string_view name; };
+
+            using Conjunction = std::variant<CommaConjunction, InfixConjunction>;
+
+            ExprBox expr;
+            Conjunction conjunction;
+
+            Fold(auto expr, Conjunction conjunction) : expr(box(expr)), conjunction(conjunction) {}
+        };
+
+        /// Tuple swizzle expression.
+        ///
+        /// Some languages, especially those dedicated to GPU programming, tend to have a set of hardcoded
+        /// swizzles usable on vectors. That is indeed rather convenient for dense vector math, but
+        /// hardcoding things isn't the Strawberry way. Thankfully there is an unambiguous syntax to
+        /// do exactly that.
+        ///
+        /// If we didn't have swizzles:
+        /// `let mut point = (x: 0, y: 0); point = (x: point.y, y: point.x)`
+        ///
+        /// They use labels if present:
+        /// `(x: 0, y: 0).(y, x)`
+        ///
+        /// Or indices:
+        /// `(x: 0, y: 0).(1, 0)`
+        ///
+        /// Or mix both:
+        /// `(x: 0, y: 0).(1, x)`
+        ///
+        /// They can relabel while swizzling:
+        /// `(x: 0, y: 0).(w: y, h: x)`
+        ///
+        /// They can relabel without swizzling (shorthand, useful to explicitly pass a tuple despite mismatched labels):
+        /// `(x: 0, y: 0).(w:h:)`
+        ///
+        /// They can
+        ///
+        /// Tuples enter a decay tendency after a swizzle. If they are bound
+        /// they implicitly preserve labels, but they will decay to all other tuples regardless of labels.
+        /// Swizzles that relabel are an exception, they do not want to decay
+        /// and will still raise a compile error if labels don't match.
+        ///
+        /// Not having a decay tendency would have made swizzles very annoying to use:
+        /// ```
+        /// let mut point = (x: 0, y: 0)
+        /// point = point.(y, x) // If labels didn't decay this would be a compile error like usual!
+        /// ```
+        struct Swizzle final {
+
+        };
+
+        /// The standard call operator used as postfix to to an expression.
         struct Call final {
             struct Argument final {
                 std::optional<std::string_view> label;
                 ExprBox expr;
             };
 
-            std::string_view name;
+            ExprBox callee;
             std::vector<Argument> arguments;
 
-            Call(std::string_view name, std::vector<Argument> arguments)
-                : name(name), arguments(std::move(arguments)) {}
+            Call(auto callee, std::vector<Argument> arguments)
+                : callee(box(callee)), arguments(std::move(arguments)) {}
         };
 
+        /// The subscript operator `[]`, used to match unqualified accessors `get` `set` and `mut` with extra arguments.
+        ///
+        /// The no-extra-argument variants are instead matched by the `*` and `->` direct projection operators.
         struct Subscript final {
             struct Argument final {
                 std::optional<std::string_view> label;
                 ExprBox expr;
             };
 
-            std::string_view name;
+            ExprBox callee;
             std::vector<Argument> arguments;
 
-            Subscript(std::string_view name, std::vector<Argument> arguments)
-                : name(name), arguments(std::move(arguments)) {}
+            Subscript(auto callee, std::vector<Argument> arguments)
+                : callee(box(callee)), arguments(std::move(arguments)) {}
         };
 
+        /// A block expression `{}`.
+        ///
+        /// Contains any number of expressions separated by newlines or semicolons.
         struct Block final {
             std::vector<ExprBox> expressions;
             explicit Block(std::vector<ExprBox> expressions) : expressions(std::move(expressions)) {}
         };
 
+        /// An explicit specialization invocation `<>`.
         struct Generics final {
             struct Parameter final {
                 std::optional<std::string_view> label;
                 ExprBox expr;
             };
 
-            std::string_view name;
+            ExprBox callee;
             std::vector<Parameter> parameters;
 
-            Generics(std::string_view name, std::vector<Parameter> parameters)
-                : name(name), parameters(std::move(parameters)) {}
+            Generics(auto callee, std::vector<Parameter> parameters)
+                : callee(box(callee)), parameters(std::move(parameters)) {}
         };
 
+        /// A literal list expression `[1, 2, 3]`.
         struct List final {
             std::vector<ExprBox> expressions;
             explicit List(std::vector<ExprBox> expressions) : expressions(std::move(expressions)) {}
         };
 
-        struct TrailingPack final {
-            std::vector<ExprBox> expressions;
-            explicit TrailingPack(std::vector<ExprBox> expressions) : expressions(std::move(expressions)) {}
-        };
-
+        /// A pure identifier expression.
         struct Identifier final {
             std::string_view name;
             explicit Identifier(std::string_view name) : name(name) {}
         };
 
+        /// An unsafe expression.
         struct Unsafe final {
             ExprBox expr;
-
-            explicit Unsafe(Expr expr) : expr(box(expr)) {}
-            explicit Unsafe(ExprBox expr) : expr(std::move(expr)) {}
+            explicit Unsafe(auto expr) : expr(box(expr)) {}
         };
 
-        struct Return final {
+        /// A non-tail recursion expression.
+        struct Recurse final {
             ExprBox expr;
-
-            explicit Return(Expr expr) : expr(box(expr)) {}
-            explicit Return(ExprBox expr) : expr(std::move(expr)) {}
+            explicit Recurse(auto expr) : expr(box(expr)) {}
         };
 
+        /// A non-tail return expression.
+        struct Return final {
+            std::optional<ExprBox> expr;
+
+            Return() {}
+            explicit Return(auto expr) : expr(box(expr)) {}
+        };
+
+        /// A coroutine-closure (generator) yield expression.
+        struct Yield final {
+            ExprBox expr;
+            explicit Yield(auto expr) : expr(box(expr)) {}
+        };
+
+        /// A throw expression.
         struct Throw final {
             ExprBox expr;
-
-            explicit Throw(Expr expr) : expr(box(expr)) {}
-            explicit Throw(ExprBox expr) : expr(std::move(expr)) {}
+            explicit Throw(auto expr) : expr(box(expr)) {}
         };
 
+        /// An await expression.
+        /// `await <expr>`
         struct Await final {
             ExprBox expr;
-
-            explicit Await(Expr expr) : expr(box(expr)) {}
-            explicit Await(ExprBox expr) : expr(std::move(expr)) {}
+            explicit Await(auto expr) : expr(box(expr)) {}
         };
 
+        /// A member projection expression `.`.
+        /// `<expr>.name`
         struct Member final {
             std::string_view name;
             ExprBox expr;
 
-            Member(std::string_view name, Expr expr) : name(name), expr(box(expr)) {}
-            Member(std::string_view name, ExprBox expr) : name(name), expr(std::move(expr)) {}
+            Member(std::string_view name, auto expr) : name(name), expr(box(expr)) {}
         };
 
-        struct Pattern final {
+        /// A reflective meta member projection expression `::`.
+        struct MetaMember final {
+            std::string_view name;
+            ExprBox expr;
 
+            MetaMember(std::string_view name, auto expr) : name(name), expr(box(expr)) {}
         };
 
+        /// A ternary conditional expression.
+        ///
+        /// ```
+        /// if <pattern> then <expr> // implicit else of ().
+        /// if <pattern> {<blockexpr>} // implicit else of ().
+        ///
+        /// if <pattern> then <expr> else <expr>
+        /// if <pattern> then {<blockexpr>} else <expr>
+        /// ```
+        ///
+        /// Note that there is no distinct "else if", because it is actually a natural consequence of the grammar.
+        /// Effectively, another `if` as the expression in the `else`, which already has the semantics we want.
+        ///
+        /// Similarly there is no dedicated block version of else, one can just use a free block expression
+        /// as the else expression to the same effect.
+        ///
+        /// This unifies conditional control flow really nicely.
         struct If final {
+            ExprBox pattern;
+            ExprBox body;
+            std::optional<ExprBox> else_body;
 
+            If(
+                auto pattern,
+                auto body,
+                auto else_body
+            ) : pattern(box(pattern))
+              , body(box(body))
+              , else_body(box(else_body))
+            {}
+
+            If(
+                auto pattern,
+                auto body
+            ) : pattern(box(pattern))
+              , body(box(body))
+            {}
         };
 
+        /// A divergent pattern binding inversion expression.
         struct Guard final {
+            ExprBox pattern;
+            ExprBox else_body;
 
+            Guard(auto pattern, auto else_body) : pattern(box(pattern)), else_body(box(else_body)) {}
         };
 
         struct When final {
-
+            ExprBox pattern;
+            explicit When(auto pattern) : pattern(box(pattern)) {}
         };
 
         struct While final {
+            ExprBox pattern;
+            ExprBox body;
 
+            While(auto pattern, auto body) : pattern(box(pattern)), body(box(body)) {}
         };
 
         struct MemberInfer final {
+            std::string_view name;
+            explicit MemberInfer(std::string_view name) : name(name) {}
+        };
 
+        struct Label final {
+            std::string_view name;
+            ExprBox expr;
+
+            Label(std::string_view name, auto expr) : name(name), expr(box(expr)) {}
         };
 
         struct Break final {
+            std::optional<std::string_view> label;
+            std::optional<ExprBox> expr;
 
+            explicit Break(std::optional<std::string_view> label) : label(label) {}
+            Break(std::optional<std::string_view> label, auto expr) : label(label), expr(box(expr)) {}
+        };
+
+        struct Continue final {
+            std::optional<std::string_view> label;
+
+            Continue() {}
+            explicit Continue(std::string_view label) : label(label) {}
         };
 
         struct Loop final {
-
+            ExprBox body;
+            explicit Loop(auto body) : body(box(body)) {}
         };
 
         struct Match final {
+            struct Arm final {
+                ExprBox pattern;
+                ExprBox body;
+            };
 
+            ExprBox lhs;
+            std::vector<Arm> arms;
+
+            Match(auto lhs, std::vector<Arm> arms) : lhs(box(lhs)), arms(std::move(arms)) {}
         };
 
         struct Catch final {
+            struct Arm final {
+                std::string_view name;
+                ExprBox pattern;
+                std::optional<ExprBox> where_clause;
+                ExprBox body;
+            };
 
+            ExprBox lhs;
+            std::vector<Arm> arms;
+
+            Catch(auto lhs, std::vector<Arm> arms) : lhs(box(lhs)), arms(std::move(arms)) {}
         };
 
         struct Closure final {
+            struct Argument final {
+                bool mut;
+                bool ref;
+                std::string_view name;
+                std::optional<ExprBox> type_expr;
 
+                Argument(bool mut, bool ref, std::string_view name, std::optional<ExprBox> type_expr)
+                    : mut(mut), ref(ref), name(name), type_expr(std::move(type_expr)) {}
+                Argument(bool mut, bool ref, std::string_view name, auto type_expr)
+                    : mut(mut), ref(ref), name(name), type_expr(box(type_expr)) {}
+                Argument(bool mut, bool ref, std::string_view name)
+                    : mut(mut), ref(ref), name(name) {}
+            };
+
+            struct Capture final {
+                bool mut;
+                bool ref;
+                std::string_view name;
+                std::optional<ExprBox> init_expr;
+
+                Capture(bool mut, bool ref, std::string_view name, std::optional<ExprBox> init_expr)
+                    : mut(mut), ref(ref), name(name), init_expr(std::move(init_expr)) {}
+                Capture(bool mut, bool ref, std::string_view name, auto init_expr)
+                    : mut(mut), ref(ref), name(name), init_expr(box(init_expr)) {}
+                Capture(bool mut, bool ref, std::string_view name)
+                    : mut(mut), ref(ref), name(name) {}
+            };
+
+            std::vector<Argument> arguments;
+            std::optional<std::vector<Capture>> captures;
+            std::optional<std::vector<ExprBox>> throws;
+            std::optional<ExprBox> return_type;
+            bool async = false;
+            ExprBox body;
+
+            Closure(
+                std::vector<Argument> arguments,
+                std::optional<std::vector<Capture>> captures,
+                std::optional<std::vector<ExprBox>> throws,
+                std::optional<ExprBox> return_type,
+                bool async,
+                auto body
+            ) : arguments(std::move(arguments))
+              , captures(std::move(captures))
+              , throws(std::move(throws))
+              , return_type(std::move(return_type))
+              , async(async)
+              , body(box(body))
+            {}
+
+            explicit Closure(auto body) : body(box(body)) {}
+        };
+
+        struct TrailingClosure final {
+            ExprBox lhs;
+            ExprBox closure;
+
+            TrailingClosure(auto lhs, auto closure) : lhs(box(lhs)), closure(box(closure)) {}
+        };
+
+        struct Destructuring final {
+            struct Binding final {
+                bool mut;
+                bool ref;
+                std::string_view name;
+                std::optional<ExprBox> type_expr;
+            };
+
+            struct Tuple final {
+                std::vector<Destructuring> elements;
+            };
+
+            using Data = std::variant<Binding, Tuple>;
+
+            std::unique_ptr<Data> data;
+
+            explicit Destructuring(Binding binding) : data(std::make_unique<Data>(std::move(binding))) {}
+            explicit Destructuring(Tuple tuple) : data(std::make_unique<Data>(std::move(tuple))) {}
+
+            template <typename T> auto get() -> T& {
+                return std::get<T>(data);
+            }
+
+            template <typename T> auto get_as() -> T* {
+                if (std::holds_alternative<T>(data)) {
+                    return &std::get<T>(data);
+                } else {
+                    return nullptr;
+                }
+            }
+
+            template <typename T> auto get() const -> T const& {
+                return std::get<T>(data);
+            }
+
+            template <typename T> auto get_as() const -> T const* {
+                if (std::holds_alternative<T>(data)) {
+                    return &std::get<T>(data);
+                } else {
+                    return nullptr;
+                }
+            }
+        };
+
+        struct For final {
+            Destructuring binding;
+            ExprBox iterator;
+            std::optional<ExprBox> where_clause;
+            ExprBox body;
+            std::optional<Destructuring> else_binding;
+            std::optional<ExprBox> else_body;
+
+            For(
+                Destructuring binding,
+                auto iterator,
+                std::optional<ExprBox> where_clause,
+                auto body,
+                std::optional<Destructuring> else_binding,
+                std::optional<ExprBox> else_body
+            ) : binding(std::move(binding))
+              , iterator(box(iterator))
+              , where_clause(std::move(where_clause))
+              , body(box(body))
+              , else_binding(std::move(else_binding))
+              , else_body(std::move(else_body))
+            {}
         };
 
         struct Binding final {
+            bool mut;
+            bool ref;
+            std::string_view name;
+            std::optional<ExprBox> type_expr;
+            std::optional<ExprBox> rhs;
 
+            Binding(
+                bool mut,
+                bool ref,
+                std::string_view name,
+                std::optional<ExprBox> type_expr,
+                std::optional<ExprBox> rhs
+            ) : mut(mut)
+              , ref(ref)
+              , name(name)
+              , type_expr(std::move(type_expr))
+              , rhs(std::move(rhs))
+            {}
+        };
+
+        struct DestructuringBinding final {
+            Destructuring pattern;
+            std::optional<ExprBox> rhs;
+
+            DestructuringBinding(Destructuring pattern, std::optional<ExprBox> rhs)
+                : pattern(std::move(pattern)), rhs(std::move(rhs)) {}
         };
 
         struct PatternBinding final {
+            bool mut;
+            bool ref;
+            std::string_view name;
+            std::optional<ExprBox> type_expr;
+
+            PatternBinding(bool mut, bool ref, std::string_view name, std::optional<ExprBox> type_expr)
+                : mut(mut), ref(ref), name(name), type_expr(std::move(type_expr)) {}
+            PatternBinding(bool mut, bool ref, std::string_view name, auto type_expr)
+                : mut(mut), ref(ref), name(name), type_expr(box(type_expr)) {}
+            PatternBinding(bool mut, bool ref, std::string_view name)
+                : mut(mut), ref(ref), name(name) {}
+        };
+
+        /// An expression used as a subexpression in other expressions when matching patterns.
+        struct Pattern final {
+            struct Enum final {
+                std::string_view name;
+                std::vector<ExprBox> elements;
+            };
+
+            struct Tuple final {
+                std::vector<ExprBox> elements;
+            };
+
+            struct Value final {
+                ExprBox expr;
+            };
+
+            using Data = std::variant<Enum, Tuple, Value>;
+
+            Data data;
+
+            std::optional<ExprBox> rhs;
+            std::optional<ExprBox> where_clause;
+
+            Pattern(Data data, std::optional<ExprBox> rhs, std::optional<ExprBox> where_clause)
+                : data(std::move(data)), rhs(std::move(rhs)), where_clause(std::move(where_clause)) {}
+        };
+
+        /// A list of lifetime bindings.
+        /// `<expr> 'binding 'other`
+        ///
+        /// This is used to bind return types, and it is an expression rather than feature of the
+        /// function declaration because it needs to be precise `-> (Int, NonCopyable 'self)`
+        struct Lifetimes final {
+            std::vector<std::string_view> bindings;
+            explicit Lifetimes(std::vector<std::string_view> bindings) : bindings(std::move(bindings)) {}
+        };
+
+        /// A class initialization sugar expression.
+        ///
+        /// For a base class and its backing storage type the expression is a composition of
+        /// invoking an initializer of the backing storage type with a concrete class storage.
+        ///
+        /// ```
+        /// base class Foo: Id<Self> {
+        ///     pub init(x: Int, y: Int) {}
+        /// }
+        ///
+        /// class Bar: Foo {}
+        ///
+        /// let x: Foo = new Bar(x: 0, y: 0)
+        /// let y: Foo = new(in: allocator) Bar(x: 0, y: 0)
+        ///
+        /// // Desugaring
+        /// let x: Id<Foo> = .init(Bar(x: 0, y: 0))
+        /// let y: Id<Foo> = .init(Bar(x: 0, y: 0), in: allocator)
+        /// ```
+        struct New final {
 
         };
 
@@ -1454,68 +2104,143 @@ namespace str {
             Infix,
             Prefix,
             Postfix,
-            Projection,
             Wildcard,
             Number,
             String,
             Boolean,
             Intrinsic,
             Tuple,
+            Callable,
+            Subtype,
+            Annotations,
             Call,
             Subscript,
             Block,
             Generics,
             List,
-            TrailingPack,
             Identifier,
             Unsafe,
+            Recurse,
             Return,
+            Yield,
             Throw,
             Await,
             Member,
-            Pattern,
+            MetaMember,
             If,
             Guard,
             When,
             While,
             MemberInfer,
+            Label,
             Break,
+            Continue,
             Loop,
             Match,
             Catch,
             Closure,
+            TrailingClosure,
+            For,
             Binding,
-            PatternBinding
+            DestructuringBinding,
+            PatternBinding,
+            Pattern,
+            Lifetimes,
+            New
         >;
 
         Data data;
         Provenance provenance;
 
         Expr(Provenance provenance, Data data) : data(std::move(data)), provenance(provenance) {}
+
+        template <typename T> auto get() -> T& {
+            return std::get<T>(data);
+        }
+
+        template <typename T> auto get_as() -> T* {
+            if (std::holds_alternative<T>(data)) {
+                return &std::get<T>(data);
+            } else {
+                return nullptr;
+            }
+        }
+
+        template <typename T> auto get() const -> T const& {
+            return std::get<T>(data);
+        }
+
+        template <typename T> auto get_as() const -> T const* {
+            if (std::holds_alternative<T>(data)) {
+                return &std::get<T>(data);
+            } else {
+                return nullptr;
+            }
+        }
     };
 
     class Decl final {
       public:
-        struct Fun final {
+        struct GenericParameter final {
 
         };
 
+        struct Argument final {
+            std::optional<std::string_view> label;
+            std::string_view name;
+            bool mut;
+            bool ref;
+            Expr type_expr;
+            std::optional<Expr> default_expr;
+        };
+
+        /// There are
+        struct Fun final {
+            struct Operator final {
+                enum class Kind { Prefix, Infix, Postfix } kind;
+                std::string_view name;
+            };
+
+            enum class Accessor { Get, Set, Mut } accessor;
+
+            std::optional<Operator> operator_spec;
+            std::string_view name;
+            std::vector<GenericParameter> generics;
+            std::vector<Argument> args;
+            std::vector<Expr> throws;
+            std::optional<Expr> return_type;
+            std::optional<Expr> where;
+            std::optional<Expr> body;
+        };
+
+        /// Type initializer.
         struct Init final {
 
         };
 
+        /// Type deinitializer.
+        struct Deinit final {
+
+        };
+
+        /// Structure declaration.
+        ///
+        /// Structs are nominal value types which
         struct Struct final {
 
         };
 
+        /// Enumeration declaration.
         struct Enum final {
 
         };
 
+        /// Category declaration.
         struct Category final {
 
         };
 
+        /// Extension declaration.
         struct Extend final {
 
         };
@@ -1524,8 +2249,30 @@ namespace str {
 
         };
 
-        struct Class final {
+        struct TypeOperator final {
 
+        };
+
+        /// Class declaration.
+        ///
+        /// Classes are a special kind of declaration which isn't useful on its own. Unlike most languages
+        /// Strawberry does not come with a base class, instead requiring the hierarchy root to be implemented
+        /// manually using compile time reflection for erasure.
+        ///
+        /// ```str
+        /// base class Foo {
+        ///     pub init
+        /// }
+        /// ```
+        ///
+        /// Classes are initialized with a new expression which is lightweight sugar for the backing container.
+        ///
+        /// ```str
+        /// let x: Base = new(in: allocator) Instance(x: 0, y: 0) // Class syntax.
+        /// let x: BackingErasureType = BackingErasureType(Instance(x: 0, y: 0), in: allocator) // Effective desugaring.
+        /// ```
+        struct Class final {
+            std::string_view name;
         };
 
         struct Member final {
@@ -1548,6 +2295,7 @@ namespace str {
         using Data = std::variant<
             Fun,
             Init,
+            Deinit,
             Struct,
             Enum,
             Category,
@@ -1560,15 +2308,37 @@ namespace str {
             Import
         >;
 
+        /// The visiblity modifier is `pub` but it also allows variants `pub(get)` and `pub(set)`
+        /// which only make read-only or write-only access public respectively.
+        enum class Visibility {
+            /// Read-write access, the modifier `pub`.
+            Pub,
+            /// Read-only access, the modifier `pub(get)`.
+            PubGet,
+            /// Write-only access, the modifier `pub(set)`.
+            PubSet
+        };
+
+        /// A declaration attached annotation.
+        struct AnnotationAttachment final {
+            /// The annotation expression itself.
+            Expr::ExprBox annotation;
+            /// If true the annotation was attached with `@!` syntax instead of `@`.
+            /// The exclamation syntax is used to invoke unsafe annotation initializers.
+            bool unsafe;
+
+            AnnotationAttachment(auto annotation, bool unsafe) : annotation(Expr::box(annotation)), unsafe(unsafe) {}
+        };
+
         Data data;
         Provenance provenance;
 
         Decl(Provenance provenance, Data data) : data(std::move(data)), provenance(provenance) {}
 
         std::optional<std::string> documentation;
-        std::vector<Expr> annotations;
+        std::vector<AnnotationAttachment> annotations;
 
-        bool mod_pub = false;
+        Visibility mod_visibility;
         bool mod_unsafe = false;
         bool mod_open = false;
         bool mod_override = false;
@@ -1577,7 +2347,32 @@ namespace str {
         bool mod_static = false;
         bool mod_inline = false;
         bool mod_implicit = false;
+        bool mod_final = false;
         bool mod_base = false;
+
+        template <typename T> auto get() -> T& {
+            return std::get<T>(data);
+        }
+
+        template <typename T> auto get_as() -> T* {
+            if (std::holds_alternative<T>(data)) {
+                return &std::get<T>(data);
+            } else {
+                return nullptr;
+            }
+        }
+
+        template <typename T> auto get() const -> T const& {
+            return std::get<T>(data);
+        }
+
+        template <typename T> auto get_as() const -> T const* {
+            if (std::holds_alternative<T>(data)) {
+                return &std::get<T>(data);
+            } else {
+                return nullptr;
+            }
+        }
     };
 
     class Ast final {
@@ -1598,7 +2393,7 @@ template <> struct std::formatter<str::Expr, char> {
         return it;
     }
 
-    constexpr auto format(str::Expr const& token, std::format_context& ctx) const {
+    constexpr auto format(str::Expr const& expr, std::format_context& ctx) const {
         throw std::runtime_error("todo");
     }
 };
@@ -1610,7 +2405,7 @@ template <> struct std::formatter<str::Decl, char> {
         return it;
     }
 
-    constexpr auto format(str::Decl const& token, std::format_context& ctx) const {
+    constexpr auto format(str::Decl const& decl, std::format_context& ctx) const {
         throw std::runtime_error("todo");
     }
 };
@@ -1668,88 +2463,138 @@ namespace str {
             return Expr(span.take(), Expr::Block(std::move(expressions)));
         }
 
-        auto parse_paren_expr(TokenStream& tokens) -> Expr {
+        auto parse_pattern_expr(TokenStream& tokens, bool top_level = true) -> Expr {
             auto span = tokens.span();
-            tokens.expect<Token::ParenLeft>();
 
-            // The special case of an empty tuple.
-            if (tokens.match<Token::ParenRight>()) {
-                return Expr(span.take(), Expr::Tuple());
+            std::optional<std::string_view> case_name;
+            std::vector<Expr::ExprBox> elements;
+            bool tuple_or_enum = false;
+
+            if (tokens.match<Token::Dot>()) {
+                case_name = tokens.expect_as<Token::Identifier>().content;
+                tuple_or_enum = true;
             }
 
-            std::vector<Expr::Tuple::Element> elements;
-            bool is_tuple = false;
+            if (tokens.match<Token::ParenLeft>()) {
+                tuple_or_enum = true;
 
-            tokens.allow<Token::NewLine>();
+                if (not tokens.peek_match<Token::ParenRight>()) {
+                    do {
 
-            while (true) {
-                std::optional<std::string_view> label;
+                        if (auto wildcard = tokens.match<Token::Identifier>("_")) {
+                            elements.push_back(Expr::box(Expr(*wildcard, Expr::Wildcard())));
+                        } else if (auto let = tokens.match<Token::Identifier>("let")) {
+                            auto post_let_span = tokens.span();
+                            bool mut = (bool) tokens.match<Token::Identifier>("mut");
+                            bool ref = (bool) tokens.match<Token::Symbolic>("&");
 
-                auto next_1 = tokens.peek(1);
-                auto next_2 = tokens.peek(2);
+                            std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                            std::optional<Expr::ExprBox> type_expr;
 
-                if (
-                    next_1 and next_1->is<Token::Identifier>() and
-                    next_2 and next_2->is<Token::Colon>()
-                ) {
-                    label = tokens.expect_as<Token::Identifier>().content;
-                    tokens.expect<Token::Colon>();
+                            if (tokens.match<Token::Colon>()) {
+                                type_expr = Expr::box(parse_expr(tokens, "="));
+                            }
 
-                    is_tuple = true;
+                            elements.emplace_back(Expr::box(Expr(
+                                { Provenance(*let), post_let_span.take() },
+                                Expr::PatternBinding(mut, ref, name, std::move(type_expr))
+                            )));
+                        } else {
+                            elements.emplace_back(Expr::box(parse_pattern_expr(tokens, false)));
+                        }
+
+                    } while (tokens.match<Token::Comma>());
                 }
 
-                elements.emplace_back(label, Expr::box(parse_expr(tokens)));
-
-                if (tokens.match<Token::Comma>()) {
-                    is_tuple = true;
-                } else {
-                    break;
-                }
+                tokens.expect<Token::ParenRight>();
             }
 
-            tokens.allow<Token::NewLine>();
-            tokens.expect<Token::ParenRight>();
-
-            // If not a tuple it's just grouping. Precedence is handled inherently by how the parser works,
-            // no Ast transformations ever occur after parsing, so we just discard this information.
-            if (is_tuple) {
-                return Expr(span.take(), Expr::Tuple(std::move(elements)));
+            Expr::Pattern::Data data;
+            if (case_name) {
+                data = Expr::Pattern::Enum(*case_name, std::move(elements));
+            } else if (tuple_or_enum) {
+                data = Expr::Pattern::Tuple(std::move(elements));
             } else {
-                (void) span.take(); // We do not need it.
-                return std::move(*elements.front().expr);
+                data = Expr::Pattern::Value(Expr::box(parse_expr(tokens)));
+            }
+
+            std::optional<Expr::ExprBox> rhs;
+            std::optional<Expr::ExprBox> where_clause;
+
+            if (top_level) {
+                if (auto assignment = tokens.match_as<Token::Symbolic>("=")) {
+                    rhs = Expr::box(parse_expr(tokens));
+                }
+
+                if (tokens.match<Token::Identifier>("where")) {
+                    where_clause = Expr::box(parse_expr(tokens));
+                }
+            }
+
+            return Expr(
+                span.take(),
+                Expr::Pattern(
+                    std::move(data),
+                    std::move(rhs),
+                    std::move(where_clause)
+                )
+            );
+        }
+
+        auto parse_destructuring(TokenStream& tokens) -> Expr::Destructuring {
+            if (tokens.match<Token::ParenLeft>()) {
+                std::vector<Expr::Destructuring> elements;
+
+                if (not tokens.peek_match<Token::ParenRight>()) {
+                    do {
+                        elements.emplace_back(parse_destructuring(tokens));
+                    } while (tokens.match<Token::Comma>());
+                }
+
+                tokens.expect<Token::ParenRight>();
+
+                return Expr::Destructuring(Expr::Destructuring::Tuple(std::move(elements)));
+            } else {
+                bool mut = (bool) tokens.match<Token::Identifier>("mut");
+                bool ref = (bool) tokens.match<Token::Symbolic>("&");
+                std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                std::optional<Expr::ExprBox> type_expr;
+
+                if (tokens.match<Token::Colon>()) type_expr = Expr::box(parse_expr(tokens, "="));
+
+                return Expr::Destructuring(Expr::Destructuring::Binding(mut, ref, name, std::move(type_expr)));
             }
         }
 
         auto parse_prefix_expr(TokenStream& tokens) -> Expr {
             auto span = tokens.span();
 
-            if (tokens.match<Token::Identifier>("mut")) {
-                tokens.expect<Token::Symbolic>("&");
-
-                Expr expr = parse_expr(tokens);
-
-                return Expr(
-                    span.take(),
-                    Expr::Projection(Expr::Projection::Kind::Mutating, std::move(expr))
-                );
-            }
-
-            if (tokens.match<Token::Symbolic>("&")) {
-                Expr expr = parse_expr(tokens);
-
-                return Expr(
-                    span.take(),
-                    Expr::Projection(Expr::Projection::Kind::Borrowing, std::move(expr))
-                );
-            }
-
             if (tokens.match<Token::Pound>()) {
-                // auto name = tokens.expect_as<Token::Identifier>().content;
+                std::optional<std::string_view> backend;
+                std::string_view name = tokens.expect_as<Token::Identifier>().content;
 
-                // return Expr(
-                //     span.take(),
-                //     Expr::Intrinsic(name, std::move)
-                // )
+                if (tokens.match<Token::Dot>()) {
+                    backend = name;
+                    name = tokens.expect_as<Token::Identifier>().content;
+                }
+
+                tokens.expect<Token::ParenLeft>();
+
+                std::vector<Expr::ExprBox> arguments;
+
+                if (not tokens.peek_match<Token::ParenRight>()) {
+                    do {
+                        tokens.allow<Token::NewLine>();
+                        if (tokens.peek_match<Token::ParenRight>()) break;
+
+                        arguments.emplace_back(Expr::box(parse_expr(tokens)));
+                    } while (tokens.match<Token::Comma>());
+                }
+
+                tokens.allow<Token::NewLine>();
+                tokens.expect<Token::ParenRight>();
+
+                return Expr(span.take(), Expr::Intrinsic(backend, name, std::move(arguments)));
             }
 
             if (tokens.match<Token::Identifier>("_")) {
@@ -1767,114 +2612,625 @@ namespace str {
             if (tokens.match<Token::Identifier>("let")) {
                 if (not tokens.peek_match<Token::ParenLeft>()) {
                     // Normal named binding.
+                    bool mut = (bool) tokens.match<Token::Identifier>("mut");
+                    bool ref = (bool) tokens.match<Token::Symbolic>("&");
+                    std::string_view name = tokens.expect_as<Token::Identifier>().content;
+
+                    std::optional<Expr::ExprBox> type_expr;
+                    if (tokens.match<Token::Colon>()) {
+                        type_expr = Expr::box(parse_expr(tokens, "="));
+                    }
+
+                    std::optional<Expr::ExprBox> rhs;
+                    if (tokens.match<Token::Symbolic>("=")) {
+                        rhs = Expr::box(parse_expr(tokens));
+                    }
+
+                    return Expr(span.take(), Expr::Binding(mut, ref, name, std::move(type_expr), std::move(rhs)));
                 } else {
-                    // Destructuring tuple binding.
+                    Expr::Destructuring pattern = parse_destructuring(tokens);
+
+                    std::optional<Expr::ExprBox> rhs;
+                    if (tokens.match<Token::Symbolic>("=")) rhs = Expr::box(parse_expr(tokens));
+
+                    return Expr(span.take(), Expr::DestructuringBinding(std::move(pattern), std::move(rhs)));
                 }
             }
 
             if (tokens.match<Token::Identifier>("loop")) {
-                // Manual loop.
+                Expr body = parse_expr(tokens);
+                return Expr(span.take(), Expr::Loop(std::move(body)));
             }
 
             if (tokens.match<Token::Identifier>("while")) {
-                // Pattern loop.
+                Expr pattern = parse_pattern_expr(tokens);
+
+                Expr body = tokens.match<Token::Identifier>("do")
+                    ? parse_expr(tokens)
+                    : parse_block_expr(tokens);
+
+                return Expr(span.take(), Expr::While(std::move(pattern), std::move(body)));
             }
 
             if (tokens.match<Token::Identifier>("for")) {
-                // Monadic loop.
+                Expr::Destructuring pattern = parse_destructuring(tokens);
+
+                tokens.expect<Token::Identifier>("in");
+
+                Expr iterator = parse_expr(tokens);
+
+                std::optional<Expr::ExprBox> where_clause;
+                if (tokens.match<Token::Identifier>("where")) where_clause = Expr::box(parse_expr(tokens));
+
+                Expr body = tokens.match<Token::Identifier>("do")
+                    ? parse_expr(tokens)
+                    : parse_block_expr(tokens);
+
+                std::optional<Expr::Destructuring> else_pattern;
+                std::optional<Expr::ExprBox> else_body;
+
+                if (tokens.match<Token::Identifier>("else")) {
+                    if (tokens.peek_match<Token::BraceLeft>()) {
+                        else_body = Expr::box(parse_block_expr(tokens));
+                    } else if (tokens.match<Token::Identifier>("do")) {
+                        else_body = Expr::box(parse_expr(tokens));
+                    } else {
+                        else_pattern = parse_destructuring(tokens);
+
+                        else_body = Expr::box(
+                            tokens.match<Token::Identifier>("do")
+                                ? parse_expr(tokens)
+                                : parse_block_expr(tokens)
+                        );
+                    }
+                }
+
+                return Expr(
+                    span.take(),
+                    Expr::For(
+                        std::move(pattern),
+                        std::move(iterator),
+                        std::move(where_clause),
+                        std::move(body),
+                        std::move(else_pattern),
+                        std::move(else_body)
+                    )
+                );
             }
 
             if (tokens.match<Token::Identifier>("unsafe")) {
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Unsafe(std::move(expr)));
+            }
 
+            if (tokens.match<Token::Identifier>("recurse")) {
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Recurse(std::move(expr)));
             }
 
             if (tokens.match<Token::Identifier>("return")) {
+                if (
+                    tokens.peek_match<Token::NewLine>() or
+                    tokens.peek_match<Token::BraceRight>()
+                ) {
+                    return Expr(span.take(), Expr::Return());
+                } else {
+                    Expr expr = parse_expr(tokens);
+                    return Expr(span.take(), Expr::Return(std::move(expr)));
+                }
+            }
 
+            if (tokens.match<Token::Identifier>("yield")) {
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Yield(std::move(expr)));
+            }
+
+            if (tokens.match<Token::Colon>()) {
+                std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Label(name, std::move(expr)));
             }
 
             if (tokens.match<Token::Identifier>("break")) {
+                std::optional<std::string_view> label;
+                if (tokens.match<Token::Colon>()) label = tokens.expect_as<Token::Identifier>().content;
 
+                if (
+                    tokens.peek_match<Token::NewLine>() or
+                    tokens.peek_match<Token::SemiColon>() or
+                    tokens.peek_match<Token::BraceRight>()
+                ) {
+                    return Expr(span.take(), Expr::Break(label));
+                } else {
+                    Expr expr = parse_expr(tokens);
+                    return Expr(span.take(), Expr::Break(label, std::move(expr)));
+                }
+            }
+
+            if (tokens.match<Token::Identifier>("continue")) {
+                if (tokens.match<Token::Colon>()) {
+                    std::string_view label = tokens.expect_as<Token::Identifier>().content;
+                    return Expr(span.take(), Expr::Continue(label));
+                } else {
+                    return Expr(span.take(), Expr::Continue());
+                }
             }
 
             if (tokens.match<Token::Identifier>("throw")) {
-
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Throw(std::move(expr)));
             }
 
             if (tokens.match<Token::Identifier>("await")) {
-
+                Expr expr = parse_expr(tokens);
+                return Expr(span.take(), Expr::Await(std::move(expr)));
             }
 
             if (tokens.match<Token::Dot>()) {
-                // Type member inference.
+                std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                return Expr(span.take(), Expr::MemberInfer(name));
             }
 
             if (tokens.match<Token::Identifier>("if")) {
-                // Pattern conditional.
+                // Technically legal syntax but it doesn't add any value.
+                if (auto illegal = tokens.peek_match<Token::Identifier>("when")) {
+                    throw Diagnostic::error(*illegal, "redundant when nested inside if");
+                }
+
+                Expr pattern = parse_pattern_expr(tokens);
+
+                Expr body = tokens.match<Token::Identifier>("then")
+                    ? parse_expr(tokens)
+                    : parse_block_expr(tokens);
+
+                if (tokens.match<Token::Identifier>("else")) {
+                    Expr else_body = parse_expr(tokens);
+                    return Expr(span.take(), Expr::If(std::move(pattern), std::move(body), std::move(else_body)));
+                } else {
+                    return Expr(span.take(), Expr::If(std::move(pattern), std::move(body)));
+                }
             }
 
             if (tokens.match<Token::Identifier>("guard")) {
-                // Inverse pattern conditional.
+                Expr pattern = parse_pattern_expr(tokens);
+                tokens.expect<Token::Identifier>("else");
+                Expr else_body = parse_expr(tokens);
+                return Expr(span.take(), Expr::Guard(std::move(pattern), std::move(else_body)));
             }
 
             if (tokens.match<Token::Identifier>("when")) {
-                // Pattern boolean expression.
+                Expr pattern = parse_pattern_expr(tokens);
+                return Expr(span.take(), Expr::When(std::move(pattern)));
             }
 
-            if (tokens.match<Token::BraceLeft>()) {
-                // Block expression.
+            if (tokens.peek_match<Token::BraceLeft>()) {
+                (void) span.take();
+                return parse_block_expr(tokens);
             }
 
-            if (tokens.match<Token::Number>()) {
-
+            if (auto number = tokens.match_as<Token::Number>()) {
+                return Expr(span.take(), Expr::Number(number->content));
             }
 
-            if (tokens.match<Token::String>()) {
-
+            if (auto string = tokens.match_as<Token::String>()) {
+                return Expr(span.take(), Expr::String(std::string(string->content)));
             }
 
-            if (tokens.match<Token::MultilineString>()) {
+            if (auto string_base = tokens.match_as<Token::MultilineString>()) {
+                std::string string = std::string(string_base->content);
 
+                bool past_newline = false;
+                while (true) {
+                    if (auto string_continuation = tokens.match_as<Token::MultilineString>()) {
+                        past_newline = false;
+                        string += "\n";
+                        string += string_continuation->content;
+                    } else if (tokens.allow<Token::NewLine>() and not past_newline) {
+                        past_newline = true;
+                    } else {
+                        break;
+                    }
+                }
+
+                return Expr(span.take(), Expr::String(std::move(string)));
             }
 
             if (tokens.match<Token::ParenLeft>()) {
-                // Parenthesized expression.
+                // The special case of an empty tuple.
+                if (tokens.match<Token::ParenRight>()) {
+                    return Expr(span.take(), Expr::Tuple());
+                }
+
+                std::vector<Expr::Tuple::Element> elements;
+                bool is_tuple = false;
+
+                tokens.allow<Token::NewLine>();
+
+                while (true) {
+                    std::optional<std::string_view> label;
+
+                    auto next_1 = tokens.peek(1);
+                    auto next_2 = tokens.peek(2);
+
+                    if (
+                        next_1 and next_1->is<Token::Identifier>() and
+                        next_2 and next_2->is<Token::Colon>()
+                    ) {
+                        label = tokens.expect_as<Token::Identifier>().content;
+                        tokens.expect<Token::Colon>();
+
+                        is_tuple = true;
+                    }
+
+                    elements.emplace_back(label, Expr::box(parse_expr(tokens)));
+
+                    if (tokens.match<Token::Comma>()) {
+                        is_tuple = true;
+                    } else {
+                        break;
+                    }
+                }
+
+                tokens.allow<Token::NewLine>();
+                tokens.expect<Token::ParenRight>();
+
+                // If not a tuple it's just grouping. Precedence is handled inherently by how the parser works,
+                // no Ast transformations ever occur after parsing, so we just discard this information.
+                if (is_tuple) {
+                    return Expr(span.take(), Expr::Tuple(std::move(elements)));
+                } else {
+                    (void) span.take(); // We do not need it.
+                    return std::move(*elements.front().expr);
+                }
             }
 
             if (tokens.match<Token::BracketLeft>()) {
                 // List literal.
+                throw tokens.todo();
             }
 
-            if (tokens.peek_match<Token::Symbolic>("|") or tokens.peek_match<Token::Symbolic>("||")) {
-                // Closure.
+            if (tokens.match<Token::Pipe>()) {
+                std::vector<Expr::Closure::Argument> arguments;
+
+                if (not tokens.peek_match<Token::Pipe>()) {
+                    do {
+                        bool mut = (bool) tokens.match<Token::Identifier>("mut");
+                        bool ref = (bool) tokens.match<Token::Symbolic>("&");
+                        std::string_view name = tokens.expect_as<Token::Identifier>().content;
+
+                        std::optional<Expr::ExprBox> type_expr;
+                        if (tokens.match<Token::Colon>()) type_expr = Expr::box(parse_expr(tokens, "="));
+
+                        arguments.emplace_back(mut, ref, name, std::move(type_expr));
+                    } while (tokens.match<Token::Comma>());
+                }
+
+                tokens.expect<Token::Pipe>();
+
+                std::optional<std::vector<Expr::Closure::Capture>> captures;
+                if (tokens.match<Token::Colon>()) {
+                    tokens.expect<Token::BracketLeft>();
+                    captures.emplace();
+
+                    if (not tokens.peek_match<Token::BracketRight>()) {
+                        do {
+                            bool mut = (bool) tokens.match<Token::Identifier>("mut");
+                            bool ref = (bool) tokens.match<Token::Symbolic>("&");
+                            std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                            std::optional<Expr::ExprBox> init_expr;
+
+                            if (tokens.peek_match<Token::Dot>()) init_expr = Expr::box(parse_expr(tokens));
+
+                            captures->emplace_back(mut, ref, name, std::move(init_expr));
+                        } while (tokens.match<Token::Comma>());
+                    }
+
+                    tokens.expect<Token::BracketRight>();
+                }
+
+                bool async = (bool) tokens.match<Token::Identifier>("async");
+
+                std::optional<std::vector<Expr::ExprBox>> throws;
+                if (tokens.match<Token::Identifier>("throws")) {
+                    throws.emplace();
+
+                    do {
+                        throws->emplace_back(Expr::box(parse_expr(tokens, ",")));
+                    } while (tokens.match<Token::Comma>());
+                }
+
+                std::optional<Expr::ExprBox> return_type;
+                if (tokens.match<Token::Arrow>()) {
+                    return_type = Expr::box(parse_expr(tokens));
+                }
+
+                Expr body = parse_expr(tokens);
+
+                return Expr(
+                    span.take(),
+                    Expr::Closure(
+                        std::move(arguments),
+                        std::move(captures),
+                        std::move(throws),
+                        std::move(return_type),
+                        async,
+                        std::move(body)
+                    )
+                );
             }
 
-            if (tokens.peek_match<Token::Identifier>()) {
-                // Try match pure identifier prefix operator.
+            // Annotates an expression with one or more annotations.
+            // type Foo = @Convention("c") @!Bar ():[] -> ()
+            if (tokens.match<Token::At>()) {
+                std::vector<Expr::Annotations::Annotation> annotations;
+
+                do {
+                    bool unsafe = false;
+                    if (tokens.match<Token::Symbolic>("!")) unsafe = true;
+
+                    // In order to disambiguate elided parentheses we can use whitespace.
+                    if (
+                        auto identifier = tokens.peek_match_as<Token::Identifier>();
+                        identifier and identifier->trailing_whitespace
+                    ) {
+                        auto token = tokens.expect<Token::Identifier>();
+                        Expr annotation = Expr(token, Expr::Identifier(identifier->content));
+                        annotations.emplace_back(std::move(annotation), unsafe);
+                    } else {
+                        Expr annotation = parse_expr(tokens);
+                        annotations.emplace_back(std::move(annotation), unsafe);
+                    }
+                } while (tokens.match<Token::At>());
+
+                Expr expr = parse_expr(tokens);
+
+                return Expr(span.take(), Expr::Annotations(std::move(annotations), std::move(expr)));
+            }
+
+            if (auto symbolic = tokens.match_as<Token::Symbolic>([] (auto symbolic) {
+                return not symbolic.trailing_whitespace;
+            })) {
+                auto rhs = parse_expr(tokens);
+                return Expr(span.take(), Expr::Prefix(symbolic->content, std::move(rhs)));
+            }
+
+            // The not identifier is the only allowed non symbolic prefix operator in order to
+            // provide familiar DNF rules for boolean logic.
+            if (tokens.match<Token::Identifier>("not")) {
+                auto rhs = parse_expr(tokens);
+                return Expr(span.take(), Expr::Prefix("not", std::move(rhs)));
+            }
+
+            if (auto identifier = tokens.match_as<Token::Identifier>()) {
+                return Expr(span.take(), Expr::Identifier(identifier->content));
             }
 
             throw Diagnostic::error(tokens.fallthrough_provenance(), "expected expression");
         }
 
+        /// Once a prefix expression ends we still try to keep going to match postfix expressions.
         auto parse_postfix_expr(Expr lhs, TokenStream& tokens) -> Expr {
             while (true) {
+                if (tokens.finished()) break;
 
+                if (tokens.peek_match<Token::Tick>()) {
+                    std::vector<std::string_view> lifetimes;
+
+                    do {
+                        lifetimes.emplace_back(tokens.expect_as<Token::Identifier>().content);
+                    } while (tokens.match<Token::Tick>());
+
+                    auto provenance = Provenance(lhs.provenance, tokens.last_provenance());
+
+                    lhs = Expr(provenance, Expr::Lifetimes(std::move(lifetimes)));
+                } else if (tokens.match<Token::ParenLeft>()) {
+                    std::vector<Expr::Call::Argument> arguments;
+
+                    if (not tokens.peek_match<Token::ParenRight>()) {
+                        do {
+                            tokens.allow<Token::NewLine>();
+                            if (tokens.peek_match<Token::ParenRight>()) break;
+
+                            std::optional<std::string_view> label;
+                            auto next_1 = tokens.peek(1);
+                            auto next_2 = tokens.peek(2);
+
+                            if (next_1 and next_1->is<Token::Identifier>() and next_2 and next_2->is<Token::Colon>()) {
+                                label = tokens.expect_as<Token::Identifier>().content;
+                                tokens.expect<Token::Colon>();
+                            }
+
+                            arguments.emplace_back(label, Expr::box(parse_expr(tokens)));
+                        } while (tokens.match<Token::Comma>());
+                    }
+
+                    tokens.allow<Token::NewLine>();
+
+                    auto closing = tokens.expect<Token::ParenRight>();
+                    auto provenance = Provenance(lhs.provenance, Provenance(closing));
+
+                    lhs = Expr(provenance, Expr::Call(std::move(lhs), std::move(arguments)));
+                } else if (tokens.match<Token::Dot>()) {
+                    auto name_token = tokens.expect<Token::Identifier>();
+                    std::string_view name = name_token.get<Token::Identifier>().content;
+
+                    auto provenance = Provenance(lhs.provenance, Provenance(name_token));
+
+                    lhs = Expr(provenance, Expr::Member(name, std::move(lhs)));
+                } else if (tokens.match<Token::Colon>()) {
+                    tokens.expect<Token::Colon>();
+
+                    auto name_token = tokens.expect<Token::Identifier>();
+                    std::string_view name = name_token.get<Token::Identifier>().content;
+
+                    auto provenance = Provenance(lhs.provenance, Provenance(name_token));
+
+                    lhs = Expr(provenance, Expr::MetaMember(name, std::move(lhs)));
+                } else if (tokens.match<Token::BracketLeft>()) {
+                    std::vector<Expr::Subscript::Argument> arguments;
+
+                    if (not tokens.peek_match<Token::BracketRight>()) {
+                        do {
+                            tokens.allow<Token::NewLine>();
+                            if (tokens.peek_match<Token::BracketRight>()) break;
+
+                            std::optional<std::string_view> label;
+                            auto next_1 = tokens.peek(1);
+                            auto next_2 = tokens.peek(2);
+
+                            if (next_1 and next_1->is<Token::Identifier>() and next_2 and next_2->is<Token::Colon>()) {
+                                label = tokens.expect_as<Token::Identifier>().content;
+                                tokens.expect<Token::Colon>();
+                            }
+
+                            arguments.emplace_back(label, Expr::box(parse_expr(tokens)));
+                        } while (tokens.match<Token::Comma>());
+                    }
+
+                    tokens.allow<Token::NewLine>();
+
+                    auto closing = tokens.expect<Token::BracketRight>();
+                    auto provenance = Provenance(lhs.provenance, Provenance(closing));
+
+                    lhs = Expr(provenance, Expr::Subscript(std::move(lhs), std::move(arguments)));
+                } else if (tokens.match<Token::Identifier>("match")) {
+                    tokens.expect<Token::BraceLeft>();
+
+                    std::vector<Expr::Match::Arm> arms;
+
+                    while (not tokens.match<Token::BraceRight>()) {
+                        tokens.drop_while(&Token::is<Token::NewLine>);
+
+                        if (tokens.peek_match<Token::BraceRight>()) break;
+
+                        Expr pattern = parse_pattern_expr(tokens);
+                        tokens.expect<Token::Arrow>();
+                        Expr body = parse_expr(tokens);
+
+                        arms.emplace_back(Expr::box(std::move(pattern)), Expr::box(std::move(body)));
+
+                        if (not tokens.allow<Token::NewLine>()) tokens.allow<Token::SemiColon>();
+                    }
+
+                    auto provenance = Provenance(lhs.provenance, tokens.last_provenance());
+
+                    lhs = Expr(provenance, Expr::Match(std::move(lhs), std::move(arms)));
+                } else if (tokens.match<Token::Identifier>("catch")) {
+                    tokens.expect<Token::BraceLeft>();
+
+                    std::vector<Expr::Catch::Arm> arms;
+
+                    while (not tokens.match<Token::BraceRight>()) {
+                        tokens.drop_while(&Token::is<Token::NewLine>);
+
+                        if (tokens.peek_match<Token::BraceRight>()) break;
+
+                        auto name = tokens.expect_as<Token::Identifier>().content;
+                        tokens.expect<Token::Colon>();
+                        Expr type_expr = parse_expr(tokens);
+
+                        std::optional<Expr::ExprBox> where_clause;
+                        if (tokens.match<Token::Identifier>("where")) where_clause = Expr::box(parse_expr(tokens));
+
+                        tokens.expect<Token::Arrow>();
+                        Expr body = parse_expr(tokens);
+
+                        arms.emplace_back(name, Expr::box(type_expr), std::move(where_clause), Expr::box(body));
+
+                        if (not tokens.allow<Token::NewLine>()) tokens.allow<Token::SemiColon>();
+                    }
+
+                    auto provenance = Provenance(lhs.provenance, tokens.last_provenance());
+
+                    lhs = Expr(provenance, Expr::Catch(std::move(lhs), std::move(arms)));
+                 } else if (tokens.match<Token::Symbolic>("<")) {
+                    std::vector<Expr::Generics::Parameter> parameters;
+
+                    if (not tokens.peek_match<Token::Symbolic>(">")) {
+                        do {
+                            tokens.allow<Token::NewLine>();
+                            if (tokens.peek_match<Token::Symbolic>(">")) break;
+
+                            std::optional<std::string_view> label;
+                            auto next_1 = tokens.peek(1);
+                            auto next_2 = tokens.peek(2);
+
+                            if (next_1 and next_1->is<Token::Identifier>() and next_2 and next_2->is<Token::Colon>()) {
+                                label = tokens.expect_as<Token::Identifier>().content;
+                                tokens.expect<Token::Colon>();
+                            }
+
+                            parameters.emplace_back(label, Expr::box(parse_expr(tokens)));
+                        } while (tokens.match<Token::Comma>());
+                    }
+
+                    tokens.allow<Token::NewLine>();
+
+                    auto closing = tokens.expect<Token::Symbolic>(">");
+                    auto provenance = Provenance(lhs.provenance, Provenance(closing));
+
+                    lhs = Expr(provenance, Expr::Generics(std::move(lhs), std::move(parameters)));
+                } else if (tokens.peek_match<Token::Pipe>()) {
+                    Expr closure = parse_prefix_expr(tokens);
+
+                    auto provenance = Provenance(lhs.provenance, closure.provenance);
+
+                    lhs = Expr(
+                        provenance,
+                        Expr::TrailingClosure(std::move(lhs), std::move(closure))
+                    );
+                } else if (tokens.peek_match<Token::BraceLeft>()) {
+                    Expr block = parse_prefix_expr(tokens);
+                    auto block_provenance = block.provenance;
+                    Expr closure = Expr(block_provenance, Expr::Closure(std::move(block)));
+
+                    auto provenance = Provenance(lhs.provenance, closure.provenance);
+
+                    lhs = Expr(
+                        provenance,
+                        Expr::TrailingClosure(std::move(lhs), std::move(closure))
+                    );
+                } else if (auto symbolic = tokens.match<Token::Symbolic>([] (auto symbolic) {
+                    return not symbolic.leading_whitespace and symbolic.content != ">";
+                })) {
+                    auto provenance = Provenance(lhs.provenance, Provenance(*symbolic));
+
+                    lhs = Expr(
+                        provenance,
+                        Expr::Postfix(symbolic->get<Token::Symbolic>().content, std::move(lhs))
+                    );
+                } else {
+                    break;
+                }
             }
+
+            return lhs;
         }
 
-        auto parse_expr(
+        template <std::convertible_to<std::string_view>... Arg> auto parse_expr(
+            TokenStream& tokens,
+            Arg... excluded_ops
+        ) -> Expr requires (sizeof...(Arg) > 0) {
+            return parse_expr(tokens, 0, excluded_ops...);
+        }
+
+        template <std::convertible_to<std::string_view>... Arg> auto parse_expr(
             TokenStream& tokens,
             usize minimum_precedence = 0,
-            std::optional<std::string_view> excluded_op = std::nullopt
+            Arg... excluded_ops
         ) -> Expr {
             Expr lhs = parse_postfix_expr(parse_prefix_expr(tokens), tokens);
 
             while (true) {
                 auto op = tokens.peek();
                 if (not op) break;
-                if (not op->is<Token::Identifier>() or not op->is<Token::Symbolic>())
-                    throw Diagnostic::error(*op, "invalid token for infix expression");
+                if (not op->is<Token::Identifier>() and not op->is<Token::Symbolic>()) break;
+                if (op->is<Token::Identifier>()) {
+                    auto content = op->identifier_content().value();
+                    if (content != "and" and content != "or") break;
+                }
                 if (operator_role(*op) != OperatorRole::Infix) break;
-                if (op->identifier_content() == excluded_op) break;
+                if (((op->identifier_content() == excluded_ops) or ...)) break;
 
                 usize prec = precedence(op->identifier_content().value());
                 if (prec < minimum_precedence) break;
@@ -1907,6 +3263,10 @@ namespace str {
         }
 
         auto parse_init(TokenStream& tokens) -> Decl {
+            throw tokens.todo();
+        }
+
+        auto parse_deinit(TokenStream& tokens) -> Decl {
             throw tokens.todo();
         }
 
@@ -1980,14 +3340,35 @@ namespace str {
                 | std::views::join_with('\n')
                 | std::ranges::to<std::string>();
 
-            std::vector<Expr> annotations;
+            std::vector<Decl::AnnotationAttachment> annotations;
 
             while (tokens.match<Token::At>()) {
-                annotations.emplace_back(parse_expr(tokens));
+                bool unsafe = false;
+                if (tokens.match<Token::Symbolic>("!")) unsafe = true;
+
+                Expr expr = parse_expr(tokens);
+                annotations.emplace_back(std::move(expr), unsafe);
                 tokens.expect<Token::NewLine>();
             }
 
-            bool mod_pub      = (bool) tokens.match<Token::Identifier>("pub");
+            Decl::Visibility mod_visibility;
+            if (tokens.match<Token::Identifier>("pub")) {
+                if (tokens.match<Token::ParenLeft>()) {
+                    auto token = tokens.expect<Token::Identifier>();
+                    std::string_view mode = token.get<Token::Identifier>().content;
+
+                    if      (mode == "get") mod_visibility = Decl::Visibility::PubGet;
+                    else if (mode == "set") mod_visibility = Decl::Visibility::PubSet;
+                    else throw Diagnostic::error(token,
+                        "visibility can only be refined to `get` or `set`"
+                    );
+
+                    tokens.expect<Token::ParenRight>();
+                } else {
+                    mod_visibility = Decl::Visibility::Pub;
+                }
+            }
+
             bool mod_unsafe   = (bool) tokens.match<Token::Identifier>("unsafe");
             bool mod_open     = (bool) tokens.match<Token::Identifier>("open");
             bool mod_override = (bool) tokens.match<Token::Identifier>("override");
@@ -1996,6 +3377,7 @@ namespace str {
             bool mod_static   = (bool) tokens.match<Token::Identifier>("static");
             bool mod_inline   = (bool) tokens.match<Token::Identifier>("inline");
             bool mod_implicit = (bool) tokens.match<Token::Identifier>("implicit");
+            bool mod_final    = (bool) tokens.match<Token::Identifier>("final");
             bool mod_base     = (bool) tokens.match<Token::Identifier>("base");
 
             std::string_view next = tokens.peek_expect_as<Token::Identifier>().content;
@@ -2010,6 +3392,8 @@ namespace str {
                 decl = parse_fun(tokens);
             } else if (next == "init") {
                 decl = parse_init(tokens);
+            } else if (next == "deinit") {
+                decl = parse_deinit(tokens);
             } else if (next == "struct") {
                 decl = parse_struct(tokens);
             } else if (next == "enum") {
@@ -2036,7 +3420,7 @@ namespace str {
 
             decl->documentation = std::move(documentation);
             decl->annotations = std::move(annotations);
-            decl->mod_pub = mod_pub;
+            decl->mod_visibility = mod_visibility;
             decl->mod_unsafe = mod_unsafe;
             decl->mod_open = mod_open;
             decl->mod_override = mod_override;
@@ -2045,6 +3429,7 @@ namespace str {
             decl->mod_static = mod_static;
             decl->mod_inline = mod_inline;
             decl->mod_implicit = mod_implicit;
+            decl->mod_final = mod_final;
             decl->mod_base = mod_base;
 
             return std::move(decl.value());
@@ -2078,6 +3463,31 @@ namespace str {
     });
 }
 
+namespace str::raw {
+    /// Implementation of the `Integer` intrinsic type.
+    /// The bootstrap compiler should be fine maxing out at 64 bits.
+    struct Integer final {
+        i64 number;
+    };
+
+    /// Implementation of the `Int` intrinsic type.
+    /// The bootstrap compiler should be fine maxing out at 64 bits.
+    struct Int final {
+        u64 number;
+        u64 size;
+    };
+
+    /// Implementation of the `Boolean` intrinsic type.
+    struct Boolean final {
+        bool value;
+    };
+
+    /// Implementation of the `Pointer` intrinsic type.
+    struct Pointer final {
+
+    };
+}
+
 namespace str {
     struct SourceUnit final {
         std::string text;
@@ -2104,10 +3514,6 @@ namespace str {
 
         friend auto evaluate(Modules modules, std::vector<SourceUnit> source_units) -> Sir;
 
-        void evaluate() {
-
-        }
-
       public:
         auto get_diagnostics() const -> std::span<const Diagnostic> {
             return diagnostics;
@@ -2119,6 +3525,62 @@ namespace str {
 
         auto failed() const -> bool {
             return erroneous;
+        }
+
+        /// The evaluator domain type of either a Type, Value or Residual.
+        struct Term final {
+            struct Type final {
+                struct Intrinsic final {
+                    std::string_view name_space;
+                    std::string_view name;
+                    std::vector<Term> arguments;
+                };
+
+                struct Nominal final {
+                    Decl& decl;
+                };
+            };
+
+            struct Value final {
+
+            };
+
+            struct Residual final {
+
+            };
+
+            using Data = std::variant<Type, Value, Residual>;
+
+            Data data;
+
+            template <typename T> auto get() -> T& {
+                return std::get<T>(data);
+            }
+
+            template <typename T> auto get_as() -> T* {
+                if (std::holds_alternative<T>(data)) {
+                    return &std::get<T>(data);
+                } else {
+                    return nullptr;
+                }
+            }
+
+            template <typename T> auto get() const -> T const& {
+                return std::get<T>(data);
+            }
+
+            template <typename T> auto get_as() const -> T const* {
+                if (std::holds_alternative<T>(data)) {
+                    return &std::get<T>(data);
+                } else {
+                    return nullptr;
+                }
+            }
+        };
+
+      private:
+        void evaluate() {
+
         }
     };
 
@@ -2308,7 +3770,7 @@ namespace str::run {
         auto modules = parse_modules(source_units);
         if (not modules) {
             for (auto const& diagnostic : modules.error()) {
-                print_compile_diagnostic(std::cout, diagnostic, source_units);
+                print_compile_diagnostic(std::cerr, diagnostic, source_units);
             }
 
             return -1;
@@ -2317,7 +3779,7 @@ namespace str::run {
         auto sir = evaluate(std::move(modules.value()), std::move(source_units));
 
         for (auto const& diagnostic : sir.get_diagnostics()) {
-            print_compile_diagnostic(std::cout, diagnostic, sir.get_source_units());
+            print_compile_diagnostic(std::cerr, diagnostic, sir.get_source_units());
         }
 
         if (not sir.failed()) {
@@ -2329,9 +3791,111 @@ namespace str::run {
 }
 
 namespace str::test {
+    /// Exception used to communicate test failure.
+    struct Unexpected : std::exception {
+        std::string results;
+
+        explicit Unexpected(std::string results) : results(std::move(results)) {}
+
+        auto what() const noexcept -> char const* override {
+            return results.c_str();
+        }
+    };
+
+    /// Dynamic compiler test interface.
+    struct Test {
+        std::string name;
+
+        explicit Test(std::string name) : name(std::move(name)) {}
+
+        virtual ~Test() = default;
+
+        /// Runs the test.
+        virtual void run() = 0;
+
+        /// If the test throws diagnostics it should answer the source text
+        /// in order for the test runner to be able to print the diagnostic properly.
+        virtual auto source() -> std::string = 0;
+    };
+
+    /// A test used to verify correctness of the expression parser.
+    struct ExprTest final : Test {
+        /// The expression to parse.
+        std::string expr;
+        /// The expected AST output.
+        std::string expect;
+
+        constexpr ExprTest(std::string name, std::string expr, std::string expect)
+            : Test(std::move(name)), expr(std::move(expr)), expect(std::move(expect)) {}
+
+        void run() override {
+            auto tokens = tokenize(expr, name);
+            auto ast = Parser().parse_expr(tokens);
+            auto fmt = std::format("{}", ast);
+
+            if (fmt != expect) throw Unexpected(std::format(
+                "exp: {}\n"
+                "got: {}\n",
+                expect, fmt
+            ));
+        }
+
+        auto source() -> std::string override {
+            return expr;
+        }
+    };
+
+    inline auto tests = std::to_array<std::unique_ptr<Test>>({
+        std::make_unique<ExprTest>(
+            "identifier",
+            "value",
+            "value"
+        ),
+        std::make_unique<ExprTest>(
+            "intrinsic",
+            "#Foo()",
+            "#Foo()"
+        )
+    });
+
     /// The entry point for the test subcommand.
     inline i32 main() {
-        std::println("TESTING: Ast");
+        usize failures = 0;
+        usize i = 0;
+
+        for (auto& test : tests) {
+            try {
+                test->run();
+                std::println(std::cout, R"(Test {}, "{}" succeeded\n)", i, test->name);
+            } catch (Unexpected& unexpected) {
+                std::println(std::cout, R"(Test {}, "{}" failed\n)", i, test->name);
+                std::println(std::cout, "{}\n", unexpected.results);
+                failures += 1;
+            } catch (Diagnostic& diagnostic) {
+                std::array<SourceUnit, 1> pseudo_units = {
+                    SourceUnit {
+                        .text = test->source(),
+                        .source = test->name
+                    }
+                };
+
+                std::println(std::cout, R"(Test {}, "{}" failed\n)", i, test->name);
+                run::print_compile_diagnostic(std::cout, diagnostic, pseudo_units);
+                failures += 1;
+            } catch (std::exception& exception) {
+                std::println(std::cout, R"(Test {}, "{}" failed\n)", i, test->name);
+                std::println(std::cout, "Unknown exception: {}\n", exception.what());
+                failures += 1;
+            }
+
+            i += 1;
+        }
+
+        if (failures) {
+            std::println(std::cout, "Failed {} of {} tests", failures, i);
+        } {
+            std::println(std::cout, "Succeeded all {} tests", i);
+        }
 
         return 0;
     }

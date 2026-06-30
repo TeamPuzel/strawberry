@@ -1,1 +1,153 @@
 module core.memory
+
+/// A pointer in Strawberry is a raw, escapable reference to one or multiple values. It is not
+/// necessarily implemented as an integer representing a linear memory address,
+/// because Strawberry does not depend on linear memory for its specification.
+///
+/// Code must be very careful with this type, and never rely on anything beyond the most naive
+/// interpretation of the individual operations it provides.
+pub struct Pointer<to: Pointee>: unsafe Copyable {
+    @Hidden
+    pub let value: #Pointer(Pointee)
+
+    @Hidden
+    pub init(raw value: #Pointer(Pointee)) {
+        self.value = value
+    }
+
+    /// Assume the pointee is uninitialized and initialize it with a value.
+    pub unsafe fun initialize(self, to value: Pointee) {
+        #pointer_initialize(self.value, value)
+    }
+
+    /// Assume the pointee is initialized and take ownership of the value.
+    pub unsafe fun deinitialize(self) -> Pointee {
+        #pointer_deinitialize(self.value)
+    }
+
+    /// Assume the slot is uninitialized and initialize it with a value.
+    pub unsafe fun initialize(self, to value: Pointee, at index: UInt) {
+        #pointer_initialize_at(self.value, index.value, value)
+    }
+
+    /// Assume the slot is initialized and take ownership of the value.
+    pub unsafe fun deinitialize(self, at index: UInt) -> Pointee {
+        #pointer_deinitialize_at(self.value, index,value)
+    }
+
+    /// The container projection operator `let x = self->member`.
+    pub unsafe get(self) -> Pointee 'self {
+        #pointer_get(self.value)
+    }
+
+    /// The container projection operator `self->member = x`.
+    pub unsafe set(self, _ value: Pointee) {
+        #pointer_set(self.value, value)
+    }
+
+    /// The in place container projection operator optimization `self->member += x`.
+    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> ()) {
+        #pointer_mut(self.value, mutation)
+    }
+
+    /// The container projection operator `let x = self[index]`.
+    pub unsafe get(self, _ index: UInt) -> Pointee 'self {
+        #pointer_get_at(self.value, index.value)
+    }
+
+    /// The container projection operator `self[index] = x`.
+    pub unsafe set(self, _ value: Pointee, _ index: UInt) {
+        #pointer_set_at(self.value, value, index.value)
+    }
+
+    /// The in place container projection operator optimization `self[index] += x`.
+    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> (), _ index: UInt) {
+        #pointer_mut_at(self.value, mutation, index.value)
+    }
+
+    /// Write the data from another pointer into this one, transfering ownership.
+    /// Assumes this pointer is has uninitialized data and the other pointer has initialized data.
+    pub unsafe fun write(self, from other: Self, count: UInt) {
+        #pointer_write(self.value, other.value, count.value) // TODO: I dislike this existing.
+    }
+
+    /// Volatile access to the pointee.
+    pub unsafe get volatile(self) -> Pointee 'self {
+        #pointer_volatile_get(self.value)
+    }
+
+    /// Volatile access to the pointee.
+    pub unsafe set volatile(self, _ value: Pointee) {
+        #pointer_volatile_set(self.value, value)
+    }
+
+    /// The container projection operator with volatile semantics `let x = self[volatile: index]`.
+    pub unsafe get(self, volatile index: UInt) -> Pointee 'self {
+        #pointer_volatile_get_at(self.value, index.value)
+    }
+
+    /// The container projection operator with volatile semantics `self[volatile: index] = x`.
+    pub unsafe set(self, _ value: Pointee, volatile index: UInt) {
+        #pointer_volatile_set_at(self.value, index.value, value)
+    }
+
+    pub fun erase(self) -> OpaquePointer {
+        .init(erasing: self)
+    }
+
+    pub init(recover opaque: OpaquePointer) {
+        self.value = #pointer_recover(Pointee, opaque.value)
+    }
+
+    pub fun rebind<to: T>(self) -> Pointer<to: T> {
+        .init(raw: #pointer_rebind(T, self.value))
+    }
+
+    pub static let null = Self(raw: #pointer_null(Pointee))
+    pub static let dangling = Self(raw: #pointer_dangling(Pointee))
+}
+
+extend Pointer: Equatable {
+    pub infix operator == fun equal(self, to other: Other) -> Boolean {
+        #pointer_eq(self.value, other.value)
+    }
+}
+
+extend Pointer: Equatable<to: OpaquePointer> {
+    pub infix operator == fun equal(self, to other: Other) -> Boolean {
+        #pointer_eq(self.value, other.value)
+    }
+}
+
+pub struct OpaquePointer: unsafe Copyable {
+    @Hidden
+    pub let value: #OpaquePointer()
+
+    @Hidden
+    pub init(raw value: #OpaquePointer()) {
+        self.value = value
+    }
+
+    pub init(erasing pointer: Pointer) {
+        self.value = #pointer_erase(pointer.value)
+    }
+
+    pub fun recover<to: T>(self) -> Pointer<to: T> {
+        .init(recover: self)
+    }
+
+    pub static let null = Self(raw: #pointer_null())
+    pub static let dangling = Self(raw: #pointer_dangling())
+}
+
+extend OpaquePointer: Equatable {
+    pub infix operator == fun equal(self, to other: &Other) -> Boolean {
+        #pointer_eq(self.value, other.value)
+    }
+}
+
+extend OpaquePointer: Equatable<to: Pointer> {
+    pub infix operator == fun equal(self, to other: &Other) -> Boolean {
+        #pointer_eq(self.value, other.value)
+    }
+}

@@ -1,0 +1,8 @@
+module core
+
+/// A wrapper for category instances which erases their concrete representation.
+pub struct Existential<of: category Inner>: Inner {
+    pub implicit init<T>(erasing inner: T) where T: Inner {
+        todo()
+    }
+}

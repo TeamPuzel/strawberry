@@ -1,0 +1,46 @@
+module core.concurrency
+
+import core.memory
+
+pub annotation Isolated {
+    pub let executor: Type
+
+    pub init(to executor: Type) {
+        self.executor = executor
+    }
+}
+
+pub category Executor {
+    fun enqueue(mut &self, _ job: Job)
+
+    fun run(_ root: () async -> ()) -> Never
+}
+
+static extend Executor {
+    pub struct Job: not Copyable {
+        let context: OpaquePointer
+        let invoke: (OpaquePointer):[] -> ()
+        let deinitialize: (OpaquePointer):[] -> ()
+
+        pub unsafe init(context: Pointer<to: () -> ()>) {
+            self.context       = context.erase()
+            self.invoke        = |c| unsafe context::Type(recover: c)->()
+            self.deinitializer = |c| unsafe context::Type(recover: c).deinitialize()
+        }
+
+        deinit {
+            self.deinitialize(self.context)
+        }
+
+        pub fun run(self) {
+            self.invoke(self.context)
+        }
+    }
+}
+
+pub struct Task<in: Allocator = DefaultAllocator> where Allocator: core.memory.Allocator {
+    @Discardable
+    pub init(on executor: Executor, _ body: () async -> ()) {
+        todo()
+    }
+}

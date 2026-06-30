@@ -1,1 +1,116 @@
 module core.memory
+
+/// A highly unsafe category which provides raw blocks of storage sufficient for allocating a type.
+/// Memory allocation is typed instead of using byte sizes, because on some platforms memory
+/// may be allocated more abstractly.
+///
+/// Storage operated on by allocators does not handle initialization or deinitialization automatically.
+///
+/// An allocator must not be `Sendable` if the pointers it provides are not safe to share across
+/// synchronization boundaries. An allocator's sendability should be observed by wrapping containers.
+pub unsafe category Allocator {
+    /// Perform a new memory allocation.
+    unsafe fun allocate<T>(mut &self, count: UInt = 1) -> Pointer<to: T>
+
+    /// Free a memory allocation.
+    unsafe fun deallocate<T>(mut &self, _ pointer: Pointer<to: T>, count: UInt = 1)
+
+    /// Resize an existing memory allocation.
+    unsafe fun reallocate<T>(
+        mut &self,
+        _ pointer: Pointer<to: T>,
+        old_count: UInt,
+        new_count: UInt
+    ) -> Pointer<to: T> {
+        let result = unsafe self.allocate<T>(count: new_count)
+        unsafe result.copy(from: pointer)
+        unsafe self.deallocate(pointer, count: old_count)
+        result
+    }
+}
+
+/// Const overloads for compile time memory allocation.
+///
+/// When allocation happens at compile time the language knows to form a compile time
+/// memory allocation, which is tracked by the pointer intrinsic. The intrinsic is initialized
+/// with knowledge of the concrete allocator type so that the backend will know to use it if it has to
+/// materialize the allocation later.
+///
+/// Of course if the allocation is performed later that's rather unfortunate as we can't handle
+/// exceptions, they will just monomorphize to a panic. Constant allocation can't fail so these
+/// overloads don't actually throw, so if `catch` reaches this they will intentionally not match, unless
+/// the allocator doesn't actually throw on allocation failure.
+extend Allocator where Self: Defaultable {
+    unsafe const fun allocate<T>(mut &self, count: UInt = 1) -> Pointer<to: T> {
+        unsafe .init(raw: #pointer_allocate(Self, T, count))
+    }
+
+    unsafe const fun deallocate<T>(mut &self, _ pointer: Pointer<to: T>, count: UInt = 1) {
+        #pointer_deallocate(T, pointer.raw, count)
+    }
+
+    unsafe const fun reallocate<T>(
+        mut &self,
+        _ pointer: Pointer<to: T>,
+        old_count: UInt,
+        new_count: UInt
+    ) -> Pointer<to: T> {
+        let result = unsafe self.allocate<T>(count: new_count)
+        unsafe result.copy(from: pointer)
+        unsafe self.deallocate(pointer, count: old_count)
+        result
+    }
+}
+
+/// An allocator which doesn't support runtime allocation.
+/// It still satisfies the `Allocator` category because it is itself const only,
+/// which means the const defaults are already exhaustive.
+pub const object ConstAllocator: unsafe Allocator
+
+/// The standard C memory interface allocator, implemented in terms of malloc, realloc and free.
+pub object LibcAllocator: unsafe Allocator {
+    @Convention("c")
+    @Extern(library: "c")
+    @!SymbolName("malloc")
+    unsafe fun malloc<T>(size: UInt) -> Pointer<to: T>
+
+    @Convention("c")
+    @Extern(library: "c")
+    @!SymbolName("free")
+    unsafe fun free<T>(_ pointer: Pointer<to: T>)
+
+    @Convention("c")
+    @Extern(library: "c")
+    @!SymbolName("realloc")
+    unsafe fun realloc<T>(_ pointer: Pointer<to: T>, new_size: UInt) -> Pointer<to: T>
+
+    pub unsafe fun allocate<T>(mut &self, count: UInt = 1) throws AllocationFailure -> Pointer<to: T> {
+        if #size_of(T) == 0 then return .dangling
+        let result = unsafe malloc(size: count * #size_of(T))
+        if result != .null then result else throw AllocationFailure
+    }
+
+    pub unsafe fun deallocate<T>(mut &self, _ pointer: Pointer<to: T>, count: UInt = 1) {
+        if #size_of(T) == 0 then return
+        unsafe free(pointer)
+    }
+
+    pub unsafe fun reallocate<T>(
+        mut &self,
+        _ pointer: Pointer<to: T>,
+        old_count: UInt,
+        new_count: UInt
+    ) throws AllocationFailure -> Pointer<to: T> {
+        if #size_of(T) == 0 then return .dangling
+        let result = unsafe realloc(pointer, new_size: new_count * #size_of(T))
+        if result != .null then result else throw AllocationFailure
+    }
+
+    pub object AllocationFailure
+}
+
+/// The default allocator for the target backend.
+pub type DefaultAllocator = #backend() match {
+    "llvm" -> LibcAllocator
+    _ -> ConstAllocator
+}

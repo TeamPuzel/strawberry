@@ -1,0 +1,50 @@
+module core
+
+/// A value which can be moved without deinitializing the binding, bypassing ownership semantics.
+/// Unsafely implementing it is almost always nonsensical and instant undefined behavior,
+/// and should only be done for intrinsic wrapper types which implement semantics unbroken by copies,
+/// such as `Pointer` or `Int`.
+pub unsafe inherent category Copyable where (Self::members: Copyable and ...)
+
+/// A value which can be moved across synchronization boundaries.
+/// Unsafely implementing it asserts that it has no unsound non-atomic side effects that could
+/// violate the law of exclusivity.
+pub unsafe inherent category Sendable where (Self::members: Sendable and ...)
+
+/// A value which can be cloned, a more general form of copying, not necessarily trivial.
+///
+/// Unlike copying, cloning can be expensive depending on the type it is performed on.
+/// It is also possible on non trivial types, such as those with deinitializers.
+pub category Cloneable {
+    /// Returns a semantic copy of the value.
+    fun clone(&self) -> Self
+}
+
+/// A type which can be initialized with a default value.
+pub inherent category Defaultable {
+    init()
+}
+
+/// All copyable values can derive cloning.
+extend Any: Cloneable where Self: Copyable {
+    pub fun clone(&self) -> Self { self }
+}
+
+/// Derive cloning for tuples.
+extend (...Element): Cloneable where (Element: Cloneable and ...) {
+    pub fun clone(&self) -> Self {
+        let (&elements, ...) = self; (elements.clone(), ...)
+    }
+}
+
+pub category Monad {
+
+}
+
+pub category Applicative {
+
+}
+
+pub category Alternative {
+
+}

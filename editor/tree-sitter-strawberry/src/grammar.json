@@ -144,6 +144,10 @@
         },
         {
           "type": "STRING",
+          "value": "decay"
+        },
+        {
+          "type": "STRING",
           "value": "await"
         },
         {
@@ -345,6 +349,10 @@
         {
           "type": "STRING",
           "value": "new"
+        },
+        {
+          "type": "STRING",
+          "value": "final"
         }
       ]
     },

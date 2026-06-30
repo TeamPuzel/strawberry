@@ -1,1 +1,268 @@
 module core
+
+/// A caseless enum. Since no instances of such an enum can
+/// ever exist, they effectively subtype all other types.
+///
+/// There is nothing special about this particular enum, but it
+/// is the convention to use it as the return type of functions
+/// that never return over any other caseless enum for readability.
+pub enum Never
+
+pub category BinaryInteger {
+
+}
+
+/// A type which supports addition and subtraction while not necessarily upholding associativity.
+pub category PartiallyAdditiveArithmetic: PartiallyEquatable {
+    infix operator + fun add(&self, _ other: &Self) -> Self
+
+    infix operator - fun subtract(&self, _ other: &Self) -> Self
+
+    infix operator += fun add(mut &self, _ other: &Self) {
+        self = self + other
+    }
+
+    infix operator -= fun subtract(mut &self, _ other: &Self) {
+        self = self - other
+    }
+}
+
+/// A type which supports addition and subtraction while upholding associativity.
+pub category AdditiveArithmetic: PartiallyAdditiveArithmetic, Equatable
+
+/// A type which can represent negative values. It does not necessarily require
+/// the result to be negated without loss of precision or mathematically nonsensical
+/// state, such as a negative zero.
+pub category PartiallySignedArithmetic: PartiallyAdditiveArithmetic {
+    pub prefix operator - fun negate(&self) -> Self
+
+    pub prefix operator + fun affirm(&self) -> Self { self }
+}
+
+/// A type which can represent negative values, negated without loss of precision,
+/// and does not result in mathematically nonsensical state, such as negative zero.
+///
+/// It must satisfy the additive inverse property, such that `a + (-a) == 0`.
+pub category SignedArithmetic: PartiallySignedArithmetic
+
+/// A type which supports multiplication while not necessarily upholding distributivity.
+pub category PartiallyNumeric: PartialAdditiveArithmetic {
+    infix operator * fun multiply(&self, with other: &Self) -> Self
+
+    infix operator *= fun multiply(mut &self, with other: &Self) {
+        self = self * other
+    }
+}
+
+/// A type which supports multiplication while upholding distributivity.
+pub category Numeric: PartiallyNumeric, AdditiveArithmetic
+
+/// A type which supports type preserving best-effort division with no guarantees about precision,
+/// such as floating point division, or truncating integer division. For the exact semantics
+/// consult documentation of instances or refinements.
+pub category PseudoFractional: PartiallyNumeric {
+    infix operator \ fun divide(&self, by other: &Self) -> Self
+
+    infix operator \= fun divide(mut &self, by other: &Self) {
+        self = self \ other
+    }
+}
+
+/// A type which supports division.
+pub category Fractional: PseudoFractional, Numeric {
+    infix operator / fun divide(&self, by other: &Self) -> Fraction<of: Self>
+}
+
+extend Fractional where Self: Copyable {
+    pub infix operator / fun divide(self, by other: Self) -> Fraction<of: Self> {
+        .init(numerator: self, denominator: other)
+    }
+}
+
+pub struct Fraction<of: Number> {
+    pub let mut numerator: Number
+    pub let mut denominator: Number
+
+    pub init(numerator: Number, denominator: Number) {
+        self.numerator = numerator
+        self.denominator = denominator
+    }
+}
+
+/// An arbitrarily sized, signed compile time integer.
+///
+/// It decays into the most reasonably constrained int possible, which
+/// is very valuable as ints have implicit conversions between each other when provably safe,
+/// so this set of types is mostly transparent, catching errors at compile time
+/// without being overly restrictive.
+///
+/// Specifically, an integer defaults to decaying into the smallest possible int unless
+/// it crosses below the natural int size, at which point it uses that instead.
+pub const struct Integer: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #Integer()
+
+    @Hidden
+    pub init(raw value: #Integer()) {
+        self.value = value
+    }
+
+    /// In Strawberry there is no elaborete multi-expression type inference, instead domains can
+    /// use authored decay rules as is the case here. This decay is implicitly const only since
+    /// integers themselves are const only.
+    pub decay type = if self.negative then Int<self.bits.max(Int.size)> else UInt<self.bits.max(UInt.size)>
+}
+
+/// An arbitrarily precise compile time decimal.
+///
+/// Decimals do not decay because there is no objectively undisputable type to decay into.
+pub const struct Decimal: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #Decimal()
+
+    @Hidden
+    pub init(raw value: #Decimal()) {
+        self.value = value
+    }
+}
+
+/// A raw, unescaped literal string of source encoding usually formed from literals.
+///
+/// Raw strings immediately decay to a `String`.
+pub const struct RawString: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #RawString()
+
+    @Hidden
+    pub init(raw value: #RawString()) {
+        self.value = value
+    }
+
+    pub const decay type = String
+}
+
+/// A numeric type representing an unsigned integer of a specified bit size.
+///
+/// The byte order is natural for the target platform, but because Strawberry does not deal
+/// with raw memory that isn't usually observed in generic code.
+///
+/// The default size is similarly the natural int size for the target platform,
+pub struct UInt<let _ size: Integer = #default_int_size()>: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #Int(size)
+
+    @Hidden
+    pub init(raw value: #Int(size)) {
+        self.value = value
+    }
+
+    pub const implicit init(_ integer: Integer) {
+        self.value = #integer_to_uint(size, integer.value)
+    }
+}
+
+/// A numeric type representing a signed integer of a fixed bit size.
+///
+/// - The sign is represented as two's complement.
+/// - The byte order is natural for the target platform.
+/// -
+///
+/// While this seems loosely specified, high level methods are provided which
+/// allow working with ints with unified semantics across all platforms.
+pub struct Int<let _ size: Integer = #default_int_size()>: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #Int(size)
+
+    @Hidden
+    pub init(raw value: #Int(size)) {
+        self.value = value
+    }
+
+    pub const implicit init(_ integer: Integer) {
+        self.value = #integer_to_int(size, integer.value)
+    }
+}
+
+extend Int: AdditiveArithmetic, Numeric, Fractional {
+    pub infix operator + fun add(self, _ other: Self) -> Self {
+        Self(raw: #add(self.value, other.value))
+    }
+
+    pub infix operator - fun subtract(self, _ other: Self) -> Self {
+        Self(raw: #sub(self.value, other.value))
+    }
+
+    pub infix operator * fun multiply(self, with other: Self) -> Self {
+        Self(raw: #smul(self.value, other.value))
+    }
+
+    pub infix operator \ fun divide(self, by other: Self) -> Self {
+        Self(raw: #sdiv(self.value, other.value))
+    }
+}
+
+extend UInt: AdditiveArithmetic, Numeric, Fractional {
+    pub infix operator + fun add(self, _ other: Self) -> Self {
+        Self(raw: #add(self.value, other.value))
+    }
+
+    pub infix operator - fun subtract(self, _ other: Self) -> Self {
+        Self(raw: #sub(self.value, other.value))
+    }
+
+    pub infix operator * fun multiply(self, with other: Self) -> Self {
+        Self(raw: #umul(self.value, other.value))
+    }
+
+    pub infix operator \ fun divide(self, by other: Self) -> Self {
+        Self(raw: #udiv(self.value, other.value))
+    }
+}
+
+pub struct Boolean: unsafe Copyable, unsafe Sendable {
+    @Hidden
+    pub let value: #Boolean()
+
+    @Hidden
+    pub implicit init(raw value: #Boolean()) {
+        self.value = value
+    }
+
+    pub infix operator fun and(self, _ other: implicit () -> Self) throws (other::throws, ...) -> Self {
+        if self then other() else false
+    }
+
+    pub infix operator fun or(self, _ other: implicit () -> Self) throws (other::throws, ...) -> Self {
+        if self then true else other()
+    }
+
+    pub prefix operator fun not(self) -> Self {
+        Self(raw: #logic_not(self.value))
+    }
+
+    pub fun toggle(mut &self) {
+        self = not self
+    }
+}
+
+pub enum Optional<of: Inner> {
+    Some(Inner)
+    None
+
+    pub implicit init(lifting inner: Inner) where Inner != () {
+        self = .Some(inner)
+    }
+
+    pub implicit init(lifting none: ()) {
+        self = .None
+    }
+}
+
+extend Any {
+    pub postfix type operator ? = Optional<Self>
+}
+
+pub enum Result<of: Inner, error: Error> {
+    Success(Inner)
+    Failure(Error)
+}

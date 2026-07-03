@@ -1,0 +1,6 @@
+module core.debug
+
+/// Temporary test function for the obligatory hello world.
+pub fun print(_ string: &String) {
+    #bootstrap_interpreter_print(string)
+}

@@ -1,9 +1,17 @@
 module core
 
+/// A type that defines ordering between values.
 pub enum Ordering {
     Less, Equal, Greater
 }
 
+/// A type which can be compared for equality.
+/// Partial equality requires that it is symmetric and transitive,
+/// that is, the result must not change depending on the direction, and it
+/// has to be preserved between instances.
+///
+/// - Symmetry: `(a == b) == (b == a)`.
+/// - Transitivity: `a == c where a == b and b == c`.
 pub category PartiallyEquatable<to: Other = Self> {
     infix operator == fun equal(&self, to other: &Other) -> Boolean
 
@@ -12,6 +20,12 @@ pub category PartiallyEquatable<to: Other = Self> {
     }
 }
 
+/// A type which can be compared for equality, but more strictly than partial equality requires.
+/// Specifically, true equality must be reflexive, so that any given instance is equal to itself.
+///
+/// - Reflexivity: `a == a`.
+/// - Symmetry: `(a == b) == (b == a)`.
+/// - Transitivity: `a == c where a == b and b == c`.
 pub category Equatable<to: Other = Self>: PartiallyEquatable<to: Other>
 
 pub category PartiallyOrdered<with: Other = Self>: PartiallyEquatable<to: Other> {

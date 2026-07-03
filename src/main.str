@@ -1,6 +1,8 @@
 module main
 
+import core.debug
+
 @Entry
 pub fun main() {
-
+    print("Hello, world!")
 }

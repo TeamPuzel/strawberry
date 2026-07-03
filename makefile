@@ -29,7 +29,7 @@ BOOTSTRAP_SRC      = bootstrap/main.cpp
 BOOTSTRAP_BIN      = build/strc
 
 BOOTSTRAP_FLAGS = \
-	-std=c++26 -Wall -g -Wunused -Wpedantic -Wno-logical-op-parentheses \
+	-std=c++26 -Wall -g -Wunused -Wpedantic -Wno-logical-op-parentheses -Wmissing-field-initializers \
 	-nostdlib++ -nostdinc++ -freflection -freflection-latest -fexpansion-statements \
 	$(BOOTSTRAP_LIB)/libc++.a $(BOOTSTRAP_LIB)/libc++abi.a $(BOOTSTRAP_LIB)/libunwind.a \
 	-isystem $(BOOTSTRAP_INCLUDE) \

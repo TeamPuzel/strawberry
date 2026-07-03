@@ -87,12 +87,6 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
         #pointer_mut_at(self.value, mutation, index.value)
     }
 
-    /// Write the data from another pointer into this one, transfering ownership.
-    /// Assumes this pointer is has uninitialized data and the other pointer has initialized data.
-    pub unsafe fun write(self, from other: Self, count: UInt) {
-        #pointer_write(self.value, other.value, count.value) // TODO: I dislike this existing.
-    }
-
     /// Volatile access to the pointee.
     pub unsafe get volatile(self) -> Pointee 'self {
         #pointer_volatile_get(self.value)

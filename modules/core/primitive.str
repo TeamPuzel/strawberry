@@ -134,7 +134,7 @@ pub const struct RawString: unsafe Copyable, unsafe Sendable {
         self.value = value
     }
 
-    pub const decay type = String
+    pub decay type = String
 }
 
 /// A numeric type representing an unsigned integer of a specified bit size.
@@ -224,11 +224,11 @@ pub struct Boolean: unsafe Copyable, unsafe Sendable {
         self.value = value
     }
 
-    pub infix operator fun and(self, _ other: implicit () -> Self) throws (other::throws, ...) -> Self {
+    pub infix operator fun and(self, _ other: implicit () -> Self) rethrows -> Self {
         if self then other() else false
     }
 
-    pub infix operator fun or(self, _ other: implicit () -> Self) throws (other::throws, ...) -> Self {
+    pub infix operator fun or(self, _ other: implicit () -> Self) rethrows -> Self {
         if self then true else other()
     }
 

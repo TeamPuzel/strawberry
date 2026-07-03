@@ -9,7 +9,7 @@ pub struct Range<of: Bound> where Bound: PartiallyOrdered {
         self.end = end
     }
 
-    pub const let all: Self = .init(start: .Unbounded, end: .Unbounded)
+    pub static let all: Self = .init(start: .Unbounded, end: .Unbounded)
 
     pub enum Edge {
         Unbounded

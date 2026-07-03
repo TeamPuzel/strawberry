@@ -32,7 +32,7 @@ extend Any: Cloneable where Self: Copyable {
 
 /// Derive cloning for tuples.
 extend (...Element): Cloneable where (Element: Cloneable and ...) {
-    pub fun clone(&self) -> Self {
+    pub fun clone(&self) rethrows -> Self {
         let (&elements, ...) = self; (elements.clone(), ...)
     }
 }

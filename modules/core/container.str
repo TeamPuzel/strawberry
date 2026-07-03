@@ -90,3 +90,12 @@ where
 
 /// We can safely share boxes as long as we can do so with the inner type and our allocator.
 extend Box: unsafe Sendable where Inner: Sendable and Allocator: Sendable
+
+/// Boxes compare their elements rather than identity.
+extend Box: PartiallyEquatable where Inner: PartiallyEquatable {
+    pub infix operator == fun equal(self, to other: &Other) -> Boolean {
+        *self == *other
+    }
+}
+
+extend Box: Equatable where Inner: Equatable

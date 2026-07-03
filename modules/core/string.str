@@ -61,7 +61,18 @@ static extend String {
 
     pub object NotAscii
 
+    /// An ASCII character.
     pub type Char = UInt<8>
+
+    /// A UTF-8 code point.
+    pub struct CodePoint {
+
+    }
+
+    /// A Unicode grapheme.
+    pub struct Character {
+
+    }
 }
 
 /// An ASCII string.
@@ -75,17 +86,7 @@ static extend String {
 pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
     pub(get) let mut? string: String<in: Allocator>
 
-    pub init(from string: String<in: Allocator>) throws String.NotAscii {
-        if not string.is_ascii() then throw String.NotAscii
-        self.string = string
-    }
-
-    pub init(borrowing string: &String<in: Allocator>) 'string throws String.NotAscii {
-        if not string.is_ascii() then throw String.NotAscii
-        self.string = string
-    }
-
-    pub init(mutating string: mut &String<in: Allocator>) 'string throws String.NotAscii {
+    pub init(of string: &&String<in: Allocator>) 'string throws String.NotAscii {
         if not string.is_ascii() then throw String.NotAscii
         self.string = string
     }
@@ -94,7 +95,7 @@ pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Alloc
         unsafe self.string.get(at: index)
     }
 
-    pub set(mut &self, _ value: String.Char, at index: UInt) where self.string::mutable {
+    pub set(mut &self, _ value: String.Char, at index: UInt) where mut(self.string) {
         unsafe self.string.set(value, at: index)
     }
 }

@@ -991,3 +991,33 @@ One solution would be to ban methods from mutating potentially mutable members b
 fun mutates(mut &self) { self.string = "" } // error
 fun mutates(mut? &self) 'self.string { self.string = "" } // ok
 ```
+
+The language would have to infer which `slice` we are using from the binding
+I am not sure if this doesn't have ambiguous edge cases
+```str
+    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) -> Slice<of: Self> 'self {
+        .init(of: &&self, x: x, y: y, width: width, height: height)
+    }
+
+// the expected binding is a borrowed projection, so we prefer `&self` throughout the expression
+let &a = plane
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+
+// the expected binding is owned, so we prefer `self` throughout the expression
+let a = plane
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+
+// the expected binding is mutably projected, so we prefer `mut &self` throughout the expression
+let mut &a = plane
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+    .slice(x: 0, y: 0, width: 10, height: 10)
+```
+
+Note that the `&&` may not be mutable, so if we need distinction (where the mutable version mutates) we would still write three overloads (but that should be rare)
+
+The syntax also visually matches what C++ developers are already used to (forwarding the value category) though hopefully powered by bidirectional inference in this case.

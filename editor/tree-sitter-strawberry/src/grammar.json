@@ -100,10 +100,6 @@
         },
         {
           "type": "STRING",
-          "value": "lazy"
-        },
-        {
-          "type": "STRING",
           "value": "object"
         },
         {
@@ -353,6 +349,18 @@
         {
           "type": "STRING",
           "value": "final"
+        },
+        {
+          "type": "STRING",
+          "value": "super"
+        },
+        {
+          "type": "STRING",
+          "value": "rethrows"
+        },
+        {
+          "type": "STRING",
+          "value": "override"
         }
       ]
     },

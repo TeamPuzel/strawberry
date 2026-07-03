@@ -1,1 +1,221 @@
 module draw
+
+pub struct Color {
+    pub let r: Component
+    pub let g: Component
+    pub let b: Component
+    pub let a: Component
+
+    pub init(r: Component, g: Component, b: Component, a: Component = .max) {
+        self.r = r
+        self.g = g
+        self.b = b
+        self.a = a
+    }
+
+    pub init(gray: Component, alpha: Component = .max) {
+        self.init(r: gray, g: gray, b: gray, a: alpha)
+    }
+
+    pub fun with(self,
+        r: Component? = .None,
+        g: Component? = .None,
+        b: Component? = .None,
+        a: Component? = .None
+    ) -> Self {
+        .init(r: r.unwrap_or(self.r), g: g.unwrap_or(self.g), b: b.unwrap_or(self.b), a: a.unwrap_or(self.a))
+    }
+
+    pub type Component = UInt<8>
+}
+
+pub category ColorPalette {
+    get count(&self) -> UInt
+    get(&self, at index: UInt) -> Color
+}
+
+static extend Color {
+    pub let clear = Color(gray: 0, alpha: 0)
+    pub let white = Color(gray: 255)
+    pub let black = Color(gray: 0)
+
+    pub object Strawberry {
+        pub let strawberry = Color(r: 214, g: 95,  b: 118)
+        pub let banana     = Color(r: 230, g: 192, b: 130)
+        pub let apple      = Color(r: 205, g: 220, b: 146)
+        pub let lime       = Color(r: 177, g: 219, b: 159)
+        pub let blueberry  = Color(r: 129, g: 171, b: 201)
+        pub let lemon      = Color(r: 240, g: 202, b: 101)
+        pub let orange     = Color(r: 227, g: 140, b: 113)
+
+        pub let white      = Color(r: 224, g: 224, b: 224)
+        pub let light      = Color(r: 128, g: 128, b: 128)
+        pub let gray       = Color(r: 59,  g: 59,  b: 59 )
+        pub let dark       = Color(r: 28,  g: 28,  b: 28 )
+        pub let black      = Color(r: 15,  g: 15,  b: 15 )
+    }
+
+    pub object Pico {
+        pub let black       = Color(r: 0,   g: 0,   b: 0  )
+        pub let dark_blue   = Color(r: 29,  g: 43,  b: 83 )
+        pub let dark_purple = Color(r: 126, g: 37,  b: 83 )
+        pub let dark_green  = Color(r: 0,   g: 135, b: 81 )
+        pub let brown       = Color(r: 171, g: 82,  b: 53 )
+        pub let dark_gray   = Color(r: 95,  g: 87,  b: 79 )
+        pub let light_gray  = Color(r: 194, g: 195, b: 199)
+        pub let white       = Color(r: 255, g: 241, b: 232)
+        pub let red         = Color(r: 255, g: 0,   b: 77 )
+        pub let orange      = Color(r: 255, g: 163, b: 0  )
+        pub let yellow      = Color(r: 255, g: 236, b: 39 )
+        pub let green       = Color(r: 0,   g: 228, b: 54 )
+        pub let blue        = Color(r: 41,  g: 173, b: 255)
+        pub let lavender    = Color(r: 131, g: 118, b: 156)
+        pub let pink        = Color(r: 255, g: 119, b: 168)
+        pub let peach       = Color(r: 255, g: 204, b: 170)
+    }
+}
+
+pub struct ColorBlender {
+    pub let blend_function: BlendFunction
+
+    pub implicit init(_ blend_function: BlendFunction) {
+        self.blend_function = blend_function
+    }
+
+    pub type BlendFunction = (top: Color, bottom: Color):[] -> Color
+}
+
+extend Color {
+    pub fun blend(self, under other: Self, with blender: BlendFunction) -> Color {
+        blender.blend_function(other, self)
+    }
+
+    pub fun blend(self, over other: Self, with blender: BlendFunction) -> Color {
+        blender.blend_function(self, other)
+    }
+}
+
+static extend ColorBlender {
+    pub let overwrite = ColorBlender |top, bottom| top
+
+    pub let binary = ColorBlender |top, bottom| if top.a == .max then top else bottom
+}
+
+pub category Plane {
+    get(&self, x: Int, y: Int) -> Color
+}
+
+pub category MutablePlane: Plane {
+    set(mut &self, _ value: Color, x: Int, y: Int)
+}
+
+pub category SizedPlane: Plane {
+    get width(&self) -> Int
+    get height(&self) -> Int
+}
+
+pub category PrimitivePlane: SizedPlane {
+    init(flattening plane: &SizedPlane)
+}
+
+extend SizedPlane {
+    pub fun flatten<into: T>(&self) -> T where T: PrimitivePlane {
+        .init(flattening: self)
+    }
+}
+
+pub enum Origin {
+    TopLeft, TopRight, BottomLeft, BottomRight
+    Left, Right, Top, Bottom
+    Center
+
+    pub fun offset(self, for plane: SizedPlane) -> (x: Int, y: Int) {
+        self match {
+            .TopLeft     -> (x: 0,               y: 0               )
+            .TopRight    -> (x: plane.width - 1, y: 0               )
+            .BottomLeft  -> (x: 0,               y: plane.height - 1)
+            .BottomRight -> (x: plane.width - 1, y: plane.height - 1)
+            .Left        -> (x: 0,               y: plane.height / 2)
+            .Right       -> (x: plane.width - 1, y: plane.height / 2)
+            .Top         -> (x: plane.width / 2, y: 0               )
+            .Bottom      -> (x: plane.width / 2, y: plane.height - 1)
+            .Center      -> (x: plane.width / 2, y: plane.height / 2)
+        }
+    }
+}
+
+// TODO: Support negative sizing.
+extend MutablePlane {
+    pub fun pixel(mut &self, _ color: Color, x: Int, y: Int, blender: ColorBlender = .binary) {
+        self[x: x, y: y] = self[x: x, y: y].blend(under: color, with: blender)
+    }
+
+    pub fun clear(mut &self, with color: Color = .clear, blender: ColorBlender = .overwrite) where Self: SizedPlane {
+        for x in 0..<self.width {
+            for y in 0..<self.height {
+                self.pixel(color, x: x, y: y, blender: blender)
+            }
+        }
+    }
+
+    pub fun draw(mut &self, _ plane: &SizedPlane, x: Int, y: Int, blender: ColorBlender = .binary) {
+        for ix in 0..<plane.width {
+            for iy in 0..<plane.height {
+                self.pixel(plane[ix, iy], x: ix + x, y: iy + y, blender: blender)
+            }
+        }
+    }
+
+    pub fun draw(mut &self, _ plane: &SizedPlane, blender: ColorBlender = .binary) {
+        self.draw(plane, x: 0, y: 0, blender: blender)
+    }
+
+    pub fun draw(mut &self,
+        _ plane: &SizedPlane,
+        from source_origin: Origin = .TopLeft,
+        at destination_origin: Origin,
+        blender: ColorBlender = .binary
+    ) where Self: SizedPlane {
+        let (x, y) = destination_origin.offset(for: self)
+        let offset = source_origin.offset(for: plane)
+        self.draw(plane, x: x - offset.x, y: y - offset.y, blender: blender)
+    }
+
+    pub fun draw(mut &self, _ plane: &SizedPlane, aligning origin: Origin, blender: ColorBlender = .binary) {
+        self.draw(plane, from: origin, at: origin, blender: blender)
+    }
+}
+
+static extend Plane {
+    pub struct Slice<of: Inner>: SizedPlane where Inner: Plane {
+        pub let mut? inner: Inner
+        pub let x: Int
+        pub let y: Int
+        pub let width: Int
+        pub let height: Int
+
+        pub init(of inner: &&Inner, x: Int, y: Int, width: Int, height: Int) 'inner {
+            self.inner = inner
+            self.x = x
+            self.y = y
+            self.width = width
+            self.height = height
+        }
+
+        pub get(&self, x: Int, y: Int) rethrows -> Color {
+            self.inner[x: x + self.x, y: y + self.y]
+        }
+    }
+
+    extend Slice: MutablePlane where Inner: MutablePlane {
+        pub set(mut &self, _ color: Color, x: Int, y: Int) where mut(self.inner) {
+            self.inner[x: x + self.x, y: y + self.y] = color
+        }
+    }
+}
+
+extend Plane {
+    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) -> Slice<of: Self> 'self {
+        .init(of: &&self, x: x, y: y, width: width, height: height)
+    }
+}

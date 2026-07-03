@@ -7,3 +7,6 @@
 
 /editor/zed-strawberry/grammars
 /editor/zed-strawberry/extension.toml
+/editor/zed-strawberry/target
+/editor/zed-strawberry/extension.wasm
+/editor/zed-strawberry/Cargo.lock

@@ -1,13 +1,14 @@
 
 const KEYWORDS = [
-    "guard", "get", "set", "Nil", "nil", "lazy", "object", "is", "annotation",
+    "guard", "get", "set", "Nil", "nil", "object", "is", "annotation",
     "Any", "inherent", "unsafe", "base", "as", "open", "async", "decay",
     "await", "inline", "use", "import", "true", "false", "else", "module",
     "then", "throw", "throws", "catch", "try", "do", "and", "or", "not", "if",
     "let", "mut", "subscript", "extend", "Self", "Type", "self", "type",
     "implicit", "init", "deinit", "where", "fun", "pub", "enum", "category", "class",
     "struct", "operator", "infix", "prefix", "postfix", "match", "break", "loop",
-    "while", "for", "in", "const", "static", "return", "when", "new", "final", "super"
+    "while", "for", "in", "const", "static", "return", "when", "new", "final", "super",
+    "rethrows", "override"
 ]
 
 module.exports = grammar({

@@ -58,11 +58,13 @@ bootstrap: build
 test: build
 	@$(BOOTSTRAP_BIN) test
 
+ZED_EXTENSION_VERSION = 0.1.1
+
 define ZED_EXTENSION_TOML
 id = "strawberry"
 name = "Strawberry"
 description = "🍓 Strawberry support."
-version = "0.1.0"
+version = "$(ZED_EXTENSION_VERSION)"
 schema_version = 1
 authors = [
     "Lua (TeamPuzel) <puffed-01.blips@icloud.com>"

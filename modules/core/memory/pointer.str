@@ -4,6 +4,28 @@ module core.memory
 /// necessarily implemented as an integer representing a linear memory address,
 /// because Strawberry does not depend on linear memory for its specification.
 ///
+/// This API is opaque by design. Pointers are a very primitive base intended to be extended by different backends,
+/// and could represent very different storage implementations, such as a linear address, a JVM array,
+/// or something else entirely. It exists to allow generic storage abstractions without leaking
+/// platform specifics into any and all code.
+///
+/// Pointers are not `Sendable`, and not just for convenience like in some other languages.
+/// It is an important observation that a pointer may not actually be possible to share on certain platforms,
+/// for example WebAssembly. Code using pointers must make sure it is not unsound on such platforms if they
+/// are supported, and allocators should carefully consider this and only declare sendability if the
+/// pointers they provide are actually safe to share.
+///
+/// Pointers are also a primitive for global variables which the language does not have built in.
+/// Checked, safe global variable mechanisms should be used instead of raw pointers, but
+/// especially low level platform code may need to use them directly.
+///
+/// Additionally, pointers can on some platforms be used for memory mapped IO, but this is very specific
+/// to each platform. Some may require more elaborate abstractions to properly take advantage of.
+///
+/// Lastly, do not assume that pointers are ubiquitous. You will find that code that makes use of
+/// pointers directly is not portable, because some platforms may lack the concept of memory altogether,
+/// the most common and important example being GPUs.
+///
 /// Code must be very careful with this type, and never rely on anything beyond the most naive
 /// interpretation of the individual operations it provides.
 pub struct Pointer<to: Pointee>: unsafe Copyable {
@@ -45,8 +67,8 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
         #pointer_set(self.value, value)
     }
 
-    /// The in place container projection operator optimization `self->member += x`.
-    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> ()) {
+    /// The in-place container projection operator optimization `self->member += x`.
+    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> ()) rethrows {
         #pointer_mut(self.value, mutation)
     }
 
@@ -60,8 +82,8 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
         #pointer_set_at(self.value, value, index.value)
     }
 
-    /// The in place container projection operator optimization `self[index] += x`.
-    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> (), _ index: UInt) {
+    /// The in-place container projection operator optimization `self[index] += x`.
+    pub unsafe mut(self, _ mutation: (value: mut &Pointee) -> (), _ index: UInt) rethrows {
         #pointer_mut_at(self.value, mutation, index.value)
     }
 
@@ -91,34 +113,50 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
         #pointer_volatile_set_at(self.value, index.value, value)
     }
 
+    /// Erases knowledge of the concrete pointee type.
     pub fun erase(self) -> OpaquePointer {
         .init(erasing: self)
     }
 
+    /// Recovers knowledge of the concrete pointee type.
     pub init(recover opaque: OpaquePointer) {
         self.value = #pointer_recover(Pointee, opaque.value)
     }
 
+    /// Changes the pointed to type. An extremely dangerous operation if platform-specific
     pub fun rebind<to: T>(self) -> Pointer<to: T> {
         .init(raw: #pointer_rebind(T, self.value))
     }
 
+    /// A distinct value representing an empty state.
+    /// It is named respecting the long established convention, but not all platforms
+    /// must necessarily use the address `0` for it.
+    /// On the 6502 for instance this address already has meaning for IO, and it would be a waste of zero-page.
     pub static let null = Self(raw: #pointer_null(Pointee))
+
+    /// A distinct value representing a non empty but still invalid state.
+    /// This is used primarily to represent pointers to zero sized types, as those are not possible to allocate,
+    /// instead requiring special handling.
     pub static let dangling = Self(raw: #pointer_dangling(Pointee))
 }
 
+/// Pointers are equatable, which represents their identity.
 extend Pointer: Equatable {
     pub infix operator == fun equal(self, to other: Other) -> Boolean {
         #pointer_eq(self.value, other.value)
     }
 }
 
+/// Pointers and opaque pointers are still equatable between each other.
 extend Pointer: Equatable<to: OpaquePointer> {
     pub infix operator == fun equal(self, to other: Other) -> Boolean {
         #pointer_eq(self.value, other.value)
     }
 }
 
+/// A type erased pointer. It allows a degree of unchecked, unsafe runtime polymorphism, but generally
+/// safe polymorphic primitives would be built on top instead of using pointers directly, except for
+/// very low level platform implementation code.
 pub struct OpaquePointer: unsafe Copyable {
     @Hidden
     pub let value: #OpaquePointer()
@@ -136,16 +174,20 @@ pub struct OpaquePointer: unsafe Copyable {
         .init(recover: self)
     }
 
+    /// Same as `Pointer.null` but untyped.
     pub static let null = Self(raw: #pointer_null())
+    /// Same as `Pointer.dangling` but untyped.
     pub static let dangling = Self(raw: #pointer_dangling())
 }
 
+/// Opaque pointers are equatable, which represents their identity.
 extend OpaquePointer: Equatable {
     pub infix operator == fun equal(self, to other: &Other) -> Boolean {
         #pointer_eq(self.value, other.value)
     }
 }
 
+/// Pointers and opaque pointers are still equatable between each other.
 extend OpaquePointer: Equatable<to: Pointer> {
     pub infix operator == fun equal(self, to other: &Other) -> Boolean {
         #pointer_eq(self.value, other.value)

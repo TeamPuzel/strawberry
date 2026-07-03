@@ -28,6 +28,7 @@
 #include <optional>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <functional>
 #include <ranges>
@@ -1477,6 +1478,16 @@ namespace str {
             explicit Boolean(bool value) : value(value) {}
         };
 
+        /// A mutable projection argument forward `foo(&bar)`.
+        struct MutableForward final {
+            ExprBox expr;
+        };
+
+        /// A universal projection argument forward `foo(&&bar)`.
+        struct UniversalForward final {
+            ExprBox expr;
+        };
+
         struct Intrinsic final {
             std::optional<std::string_view> backend;
             std::string_view name;
@@ -1576,14 +1587,16 @@ namespace str {
         /// They are useful for abstracting over variadic packs without immediately having to drop
         /// down to a compile time loop.
         ///
-        /// They have two forms depending on if they use an infix operator or comma:
+        /// They have two forms depending on if they use an infix operator, comma or semicolon:
+        /// - Statement map expression: `(expr.toggle(); ...)`
         /// - Tuple map expression: `(expr.toggle(), ...)`
         /// - Reduction expression: `(expr + ...)`
         struct Fold final {
             struct CommaConjunction final {};
+            struct SemiColonConjunction final {};
             struct InfixConjunction final { std::string_view name; };
 
-            using Conjunction = std::variant<CommaConjunction, InfixConjunction>;
+            using Conjunction = std::variant<CommaConjunction, SemiColonConjunction, InfixConjunction>;
 
             ExprBox expr;
             Conjunction conjunction;
@@ -2108,6 +2121,8 @@ namespace str {
             Number,
             String,
             Boolean,
+            MutableForward,
+            UniversalForward,
             Intrinsic,
             Tuple,
             Callable,
@@ -2182,15 +2197,43 @@ namespace str {
     class Decl final {
       public:
         struct GenericParameter final {
-
+            enum class Kind { Value, Type } kind;
+            std::optional<std::string_view> label;
+            std::string_view name;
+            std::optional<Expr> type_expr;
+            std::optional<Expr> default_expr;
         };
 
         struct Argument final {
+            /// The convention by which the argument is being passed.
+            enum class Convention {
+                /// The default argument convention `fun foo(arg: T)`.
+                /// Represents a value we own.
+                Consume,
+                /// The borrowed argument convention `fun foo(arg: &T)`.
+                /// Represents a value we do not own.
+                BorrowedProjection,
+                /// The mutable argument convention `fun foo(arg: mut &T)`.
+                /// Represents a value we temporarily own but must return back.
+                MutableProjection,
+                /// The universal argument convention `fun foo(arg: &&T)`.
+                /// Represents a value of unknown (any of the other three) ownership status.
+                UniversalProjection
+            };
+
+            /// The argument label.
             std::optional<std::string_view> label;
+            /// The binding name, and the label if one was not provided.
             std::string_view name;
-            bool mut;
-            bool ref;
+            /// When passing a closure with no arguments an implicit convention means that
+            /// passing a value of the closure's return type will automatically wrap it in one.
+            /// This is used to implement lazy semantics, primarily short circuit semantics for boolean operators.
+            bool implicit;
+            /// The argument passing convention.
+            Convention convention;
+            /// The type expression.
             Expr type_expr;
+            /// The default expression.
             std::optional<Expr> default_expr;
         };
 
@@ -2207,27 +2250,50 @@ namespace str {
             std::string_view name;
             std::vector<GenericParameter> generics;
             std::vector<Argument> args;
+            /// A list of thrown exceptions.
             std::vector<Expr> throws;
+            /// In highly generic code `rethrows` can be used instead of a `throws` list, which makes the function
+            /// completely transparent to exceptions, forwarding all of them. This doesn't conflict with an explicit
+            /// exception list, so in cases where distinct exceptions are still thrown they should be expressed
+            /// as such in the normal list for completeness and readability.
+            bool rethrows;
             std::optional<Expr> return_type;
             std::optional<Expr> where;
             std::optional<Expr> body;
         };
 
         /// Type initializer.
+        ///
+        /// There are two kinds of initializers, instance and const. A const init has no parenthesized argument list,
+        /// must be const, and defines compile time initialization logic (through side effects, such as
+        /// emitting type metadata for a class hierarchy into the constant section of a binary). An instance init
+        /// can be const, has a parenthesized argument list, and defines in-place initialization logic for instances.
         struct Init final {
 
         };
 
         /// Type deinitializer.
+        ///
+        /// Deinitializers are only available to noncopyable types.
+        ///
+        /// There are two kinds of deinitializers, automatic and functional. An automatic deinit has no
+        /// parenthesized argument list and defines deinitialization logic which will happen automatically at
+        /// the end of the instance's lifetime. A functional deinit is a normal function declaration following
+        /// deinit as a modifier. It must consume `self` and it takes destructive ownership of the type, that is,
+        /// the automatic deinit is not run and instead the function takes individual ownership of its members.
         struct Deinit final {
 
         };
 
         /// Structure declaration.
         ///
-        /// Structs are nominal value types which
+        /// Structs are nominal value types.
         struct Struct final {
-
+            std::string_view name;
+            std::vector<GenericParameter> generics;
+            std::vector<Expr> superlist;
+            std::optional<Expr> where;
+            std::vector<Decl> decls;
         };
 
         /// Enumeration declaration.
@@ -2241,10 +2307,22 @@ namespace str {
         };
 
         /// Extension declaration.
+        ///
+        /// There are four kinds of extensions.
+        /// A static extension targets the namespace of a type or category declaration, but does not inherit its
+        /// generic context. A nominal type extension targets a nominal type and extends individual instances if it
+        /// has a generic context, inheriting it. A blanket extension targets the top type, `Any`. A structural
+        /// extension is a variadic extension which allows extending tuples.
+        ///
+        /// Note that the static extension can't extend with a category conformance since it is just a namespace
+        /// mixin feature. If it wasn't there making a type generic would lose the ability to namespace
+        /// related types within non-generically, which would be very unfortunate and necessitate naming conventions
+        /// such as `PlaneSlice` instead of just nesting `Plane.Slice`.
         struct Extend final {
 
         };
 
+        /// Type alias declaration.
         struct Type final {
 
         };
@@ -2277,6 +2355,7 @@ namespace str {
 
         struct Member final {
 
+            bool conditionally_mutable;
         };
 
         struct Object final {
@@ -3496,12 +3575,16 @@ namespace str {
 
     using Modules = std::unordered_map<std::string, std::vector<Ast>>;
 
+    /// The actual data structure we form from the Ast and operate on as we evaluate.
+    /// It was named the Strawberry Intermediate Representation.
+    ///
+    /// The bootstrap implementation is hardcoded and does not use the plugin architecture
+    /// planned for the self-hosted backends.
     class Sir final {
         Modules modules;
         std::vector<SourceUnit> source_units;
         std::vector<std::string> auto_imports;
         std::vector<Diagnostic> diagnostics;
-        bool erroneous = false;
 
         Sir(
             Modules modules,
@@ -3523,22 +3606,26 @@ namespace str {
             return source_units;
         }
 
-        auto failed() const -> bool {
-            return erroneous;
+        /// Answers true if the evaluation is erroneous, that is, if any diagnostics of error severity were raised.
+        auto erroneous() const -> bool {
+            for (auto const& diagnostic : diagnostics)
+                if (diagnostic.severity == Diagnostic::Severity::Error) return true;
+            return false;
         }
+
+        /// An exception used to propagate multiple diagnostics at once.
+        struct DiagnosticBundle final : std::exception {
+            std::vector<Diagnostic> diagnostics;
+            auto what() const noexcept -> char const* override { return "N/A"; }
+
+            template <std::same_as<Diagnostic>... Diagnostic> DiagnosticBundle(Diagnostic... diagnostics)
+                : diagnostics({ diagnostics... }) {}
+        };
 
         /// The evaluator domain type of either a Type, Value or Residual.
         struct Term final {
             struct Type final {
-                struct Intrinsic final {
-                    std::string_view name_space;
-                    std::string_view name;
-                    std::vector<Term> arguments;
-                };
 
-                struct Nominal final {
-                    Decl& decl;
-                };
             };
 
             struct Value final {
@@ -3578,12 +3665,161 @@ namespace str {
             }
         };
 
+        /// As the evaluator descends it may be operating in a lexical scope, like a block. Blocks allow a few
+        /// additional statement expressions which declare bindings for the duration of the lexical scope, and
+        /// this type is used to represent that associated state.
+        struct LexicalScope final {
+            struct Binding final {
+                /// A binding can be a matrix of mutability and projection class.
+                /// Mutable projections are subject to mandatory definite reinitialization.
+                /// Projections can of course themselves be projected.
+                enum class Kind {
+                    /// An owned binding `x`.
+                    Let,
+                    /// An owned mutable binding `mut x`.
+                    LetMut,
+                    /// A projected binding `&x`.
+                    LetRef,
+                    /// A projected mutable binding `mut &x`
+                    LetRefMut,
+                };
+
+                /// The kind of the binding.
+                Kind kind;
+                /// The name of the binding.
+                std::string_view name;
+                /// The provenance of the binding.
+                Provenance provenance;
+                /// The meaning is as follows:
+                /// - `-2` is an uninitialized binding.
+                /// - `-1` is a mutably projected binding.
+                /// - `0` is a balanced binding.
+                /// - `1...` is a reference count of borrowing projections.
+                i32 refcount;
+
+                void consume(Provenance usage_provenance) {
+                    switch (refcount) {
+                        case -2: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` moved while uninitialized", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case -1: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` moved while mutably projected", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case 0: refcount = -2; break;
+                        default: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` moved while borrowed", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                    }
+                }
+
+                void initialize(Provenance usage_provenance) {
+                    switch (refcount) {
+                        case -2: refcount = 0; break;
+                        case -1: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` reinitialized while mutably projected", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case 0: refcount = 0; break;
+                        default: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` reinitialized while borrowed", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                    }
+                }
+
+                void borrow(Provenance usage_provenance) {
+                    switch (refcount) {
+                        case -2: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` borrowed while uninitialized", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case -1: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` borrowed while mutably projected", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        default: refcount += 1; break;
+                    }
+                }
+
+                void yield_borrow() {
+                    if (refcount <= 0) throw std::logic_error("yielded borrow of an unborrowed binding");
+                    refcount -= 1;
+                }
+
+                void mutate(Provenance usage_provenance) {
+                    switch (refcount) {
+                        case -2: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` mutably projected while uninitialized", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case -1: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` is mutably projected while already mutably projected", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                        case 0: refcount = -1; break;
+                        default: throw DiagnosticBundle(
+                            Diagnostic::error(usage_provenance, std::format("binding `{}` mutably projected while borrowed", name)),
+                            Diagnostic::info(provenance, std::format("binding `{}` located here", name))
+                        );
+                    }
+                }
+
+                void yield_mutate() {
+                    if (refcount != -1) throw std::logic_error("yielded mutable projection of an unprojected binding");
+                    refcount = 0;
+                }
+            };
+
+            /// All the lexical bindings in order of instantiation.
+            /// Lexically bound objects are deinitialized in reverse order unless manually consumed early.
+            std::vector<Binding> bindings;
+            /// Determines if the scope is a boundary for consumption. For example, a loop body is a boundary
+            /// because consuming across would make a binding uninitialized past the first iteration.
+            /// Note that this is just a definite initialization problem, so if said loop reinitializes the binding
+            /// before it ends that is perfectly valid, much like temporarily moving out of a mutable
+            /// projection argument e.g. to implement a swap.
+            bool consume_boundary;
+        };
+
+        /// Whenever something is being evaluated it will register itself here.
+        /// If evaluation then circularly depends on itself it can fail with a diagnostic.
+        /// Evaluations that fail should never remove themselves from the registry because we must know
+        /// to abort other evaluations that depend on it as well.
+        /// This is because individual evaluations will catch diagnostics and we can continue evaluating something else.
+        /// In the end, if any diagnostics of error severity were present, the sir is erroneous and can't be lowered.
+        std::unordered_set<std::string> active_evaluations;
+
+        /// A unique evaluation context.
+        struct EvaluationContext final {
+
+        };
+
+        template <std::convertible_to<std::string_view>... Arg> auto residualize_all_annotated_as(
+            Arg... annotation_qualified_paths
+        ) -> std::span<int> { // TODO: Return type or general API change.
+            throw std::runtime_error("todo");
+
+            template for (constexpr std::string_view path : annotation_qualified_paths) {
+
+            }
+        }
+
+        void collect_decl(Decl& decl, bool top_level = false) {
+
+        }
+
       private:
+        /// This method must only be called once, so it is private and only called in the controlled
+        /// environment of the `evaluate` free function.
         void evaluate() {
 
         }
     };
 
+    /// Produces an evaluated Sir instance.
     inline auto evaluate(Modules modules, std::vector<SourceUnit> source_units) -> Sir {
         Sir sir(
             std::move(modules),
@@ -3603,6 +3839,23 @@ namespace str {
     /// Unlike the actual compiler, the bootstrap compiler naively executes the residual tree directly
     /// instead of lowering, since it would be a waste to write non self-hosted backends.
     inline i32 execute(Sir& sir) {
+        // auto residuals = sir.residualize_all_annotated_as("core.Entry");
+
+        // for (auto residual : residuals) {
+
+        // }
+
+        return 0;
+    }
+
+    /// A special temporary backend for the 6502 for prototyping the language in an extremely constrained environment.
+    inline i32 backend_lower_ca65(Sir& sir) {
+        // auto residuals = sir.residualize_all_annotated_as("core.Entry", "core.Export");
+
+        // for (auto residual : residuals) {
+
+        // }
+
         return 0;
     }
 }
@@ -3782,7 +4035,7 @@ namespace str::run {
             print_compile_diagnostic(std::cerr, diagnostic, sir.get_source_units());
         }
 
-        if (not sir.failed()) {
+        if (not sir.erroneous()) {
             return execute(sir);
         } else {
             return -1;

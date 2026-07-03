@@ -9,7 +9,7 @@ module core.memory
 /// An allocator must not be `Sendable` if the pointers it provides are not safe to share across
 /// synchronization boundaries. An allocator's sendability should be observed by wrapping containers.
 pub unsafe category Allocator {
-    /// Perform a new memory allocation.
+    /// Obtain a new memory allocation.
     unsafe fun allocate<T>(mut &self, count: UInt = 1) -> Pointer<to: T>
 
     /// Free a memory allocation.
@@ -21,9 +21,9 @@ pub unsafe category Allocator {
         _ pointer: Pointer<to: T>,
         old_count: UInt,
         new_count: UInt
-    ) -> Pointer<to: T> {
+    ) rethrows -> Pointer<to: T> {
         let result = unsafe self.allocate<T>(count: new_count)
-        unsafe result.copy(from: pointer)
+        for i in 0..<old_count do unsafe result.initialize(to: pointer.deinitialize(at: i), at: i)
         unsafe self.deallocate(pointer, count: old_count)
         result
     }
@@ -39,7 +39,7 @@ pub unsafe category Allocator {
 /// Of course if the allocation is performed later that's rather unfortunate as we can't handle
 /// exceptions, they will just monomorphize to a panic. Constant allocation can't fail so these
 /// overloads don't actually throw, so if `catch` reaches this they will intentionally not match, unless
-/// the allocator doesn't actually throw on allocation failure.
+/// the allocator doesn't actually throw on allocation failure (which is exactly the semantics we want).
 extend Allocator where Self: Defaultable {
     unsafe const fun allocate<T>(mut &self, count: UInt = 1) -> Pointer<to: T> {
         unsafe .init(raw: #pointer_allocate(Self, T, count))
@@ -56,7 +56,7 @@ extend Allocator where Self: Defaultable {
         new_count: UInt
     ) -> Pointer<to: T> {
         let result = unsafe self.allocate<T>(count: new_count)
-        unsafe result.copy(from: pointer)
+        for i in 0..<old_count do unsafe result.initialize(to: pointer.deinitialize(at: i), at: i)
         unsafe self.deallocate(pointer, count: old_count)
         result
     }

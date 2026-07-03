@@ -8,10 +8,6 @@ module core
 /// that never return over any other caseless enum for readability.
 pub enum Never
 
-pub category BinaryInteger {
-
-}
-
 /// A type which supports addition and subtraction while not necessarily upholding associativity.
 pub category PartiallyAdditiveArithmetic: PartiallyEquatable {
     infix operator + fun add(&self, _ other: &Self) -> Self

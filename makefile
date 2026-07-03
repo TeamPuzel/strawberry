@@ -19,7 +19,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-.PHONY: configure clangd build bootstrap test zed-extension compile-commands
+.PHONY: cloc configure clangd build bootstrap test zed-extension compile-commands
 
 BOOTSTRAP_COMPILER = $(STRAWBERRY_LLVM)/bin/clang++
 BOOTSTRAP_INCLUDE  = $(STRAWBERRY_LLVM)/include/c++/v1
@@ -41,6 +41,9 @@ ifeq ($(shell uname -s), Darwin)
 endif
 
 all: bootstrap
+
+cloc:
+	@cloc --read-lang-def=editor/cloc_strawberry.txt modules bootstrap
 
 clangd:
 	@echo "CompileFlags:" > .clangd

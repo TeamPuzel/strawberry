@@ -2,7 +2,8 @@ module core
 
 import core.memory
 
-///
+/// A box is an owned storage allocation. It is useful whenever sharing isn't required but an
+/// indirection still is, such as in recursive data structures.
 pub struct Box<of: Inner, in: Allocator = DefaultAllocator>: not Copyable
 where
     Allocator: core.memory.Allocator
@@ -10,13 +11,13 @@ where
     pub let raw: Pointer<to: Inner>
     pub(get) let mut allocator: Allocator
 
-    pub init(_ inner: Inner, in allocator: Allocator) {
+    pub init(_ inner: Inner, in allocator: Allocator) rethrows {
         self.raw = unsafe self.allocator.allocate()
         unsafe self.raw.initialize(to: inner)
         self.allocator = allocator
     }
 
-    pub init(_ inner: Inner) where Allocator: Defaultable {
+    pub init(_ inner: Inner) rethrows where Allocator: Defaultable {
         self.init(inner, in: .init())
     }
 
@@ -36,13 +37,13 @@ where
     }
 
     /// Allows mutating the inner type.
-    pub mut(mut &self, _ mutation: (value: mut &Inner) -> ()) {
+    pub mut(mut &self, _ mutation: (value: mut &Inner) -> ()) rethrows {
         unsafe self.raw.mut(mutation)
     }
 
     /// Recovers a `Box` from an erased opaque pointer.
     /// The erased pointer has to be one that was previously erased
-    /// from the same instantiation of the `Box` type.
+    /// from the same instantiation of the `Box` type or obtained from its allocator instance.
     pub unsafe init(recover erased: OpaquePointer, in allocator: Allocator) {
         self.raw = erased.recover()
         self.allocator = allocator
@@ -50,7 +51,7 @@ where
 
     /// Recovers a `Box` from a raw pointer.
     /// The raw pointer has to be one that was previously erased
-    /// from the same instantiation of the `Box` type.
+    /// from the same instantiation of the `Box` type or obtained from its allocator instance.
     pub unsafe init(recover raw: Pointer<to: Inner>, in allocator: Allocator) {
         self.raw = raw
         self.allocator = allocator
@@ -87,4 +88,5 @@ where
     }
 }
 
+/// We can safely share boxes as long as we can do so with the inner type and our allocator.
 extend Box: unsafe Sendable where Inner: Sendable and Allocator: Sendable

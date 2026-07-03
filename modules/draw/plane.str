@@ -26,6 +26,14 @@ pub struct Color {
         .init(r: r.unwrap_or(self.r), g: g.unwrap_or(self.g), b: b.unwrap_or(self.b), a: a.unwrap_or(self.a))
     }
 
+    // TODO: Maybe the library should finally support more color formats? It would be valuable for some software
+    // and could enable features like extended dynamic range.
+    // I have once prototyped that in Swift, but it was very elaborate and verbose. It might work out better
+    // in Strawberry however, so it could be worth a try.
+    //
+    // The main feature needed to enable that would be a category hierarchy for color itself, describing various
+    // properties and capabilities, allowing rendering code to support as much as they can.
+
     pub type Component = UInt<8>
 }
 

@@ -22,6 +22,7 @@ pub category StringLike {
 pub struct String<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
     pub(get) let mut bytes: List<of: UInt<8>, in: Allocator>
 
+    /// Initializes a string from a collection of bytes.
     pub init(from bytes: &SizedCollection<of: UInt<8>>, in allocator: Allocator) throws DecodingFailure {
         // TODO: Validate on the fly that the bytes are legal UTF-8 instead of blindly flattening into a list.
         self.bytes = bytes.flatten(in: allocator)

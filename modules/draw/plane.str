@@ -206,16 +206,16 @@ static extend Plane {
             self.inner[x: x + self.x, y: y + self.y]
         }
     }
+}
 
-    extend Slice: MutablePlane where Inner: MutablePlane {
-        pub set(mut &self, _ color: Color, x: Int, y: Int) where mut(self.inner) {
-            self.inner[x: x + self.x, y: y + self.y] = color
-        }
+extend Plane.Slice: MutablePlane where Inner: MutablePlane {
+    pub set(mut &self, _ color: Color, x: Int, y: Int) rethrows where mut(self.inner) {
+        self.inner[x: x + self.x, y: y + self.y] = color
     }
 }
 
 extend Plane {
-    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) -> Slice<of: Self> 'self {
+    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) rethrows -> Slice<of: Self> 'self {
         .init(of: &&self, x: x, y: y, width: width, height: height)
     }
 }

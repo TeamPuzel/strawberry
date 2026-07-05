@@ -55,6 +55,9 @@ configure: clangd
 build:
 	@$(BOOTSTRAP_COMPILER) $(BOOTSTRAP_FLAGS) $(BOOTSTRAP_SRC) -o $(BOOTSTRAP_BIN)
 
+build-time:
+	@$(BOOTSTRAP_COMPILER) $(BOOTSTRAP_FLAGS) -ftime-trace $(BOOTSTRAP_SRC) -o $(BOOTSTRAP_BIN)
+
 bootstrap: build
 	@$(BOOTSTRAP_BIN) run
 

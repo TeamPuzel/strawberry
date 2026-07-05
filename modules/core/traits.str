@@ -4,12 +4,12 @@ module core
 /// Unsafely implementing it is almost always nonsensical and instant undefined behavior,
 /// and should only be done for intrinsic wrapper types which implement semantics unbroken by copies,
 /// such as `Pointer` or `Int`.
-pub unsafe inherent category Copyable where (Self::Members: Copyable and ...)
+pub unsafe inherent category Copyable where (Self::members::Type: Copyable and ...)
 
 /// A value which can be moved across synchronization boundaries.
 /// Unsafely implementing it asserts that it has no unsound non-atomic side effects that could
 /// violate the law of exclusivity.
-pub unsafe inherent category Sendable where (Self::Members: Sendable and ...)
+pub unsafe inherent category Sendable where (Self::members::Type: Sendable and ...)
 
 /// A value which can be cloned, a more general form of copying, not necessarily trivial.
 ///

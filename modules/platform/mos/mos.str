@@ -10,6 +10,6 @@ extend Pointer {
     }
 
     pub init(address: UInt) {
-        self.init(raw: #mos.pointer_address(address)
+        self.init(raw: #mos.pointer_address(address))
     }
 }

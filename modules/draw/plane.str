@@ -196,13 +196,13 @@ extend MutablePlane {
 
 static extend Plane {
     pub struct Slice<of: Inner>: SizedPlane where Inner: Plane {
-        pub let mut? inner: Inner
+        pub let mut &inner: Inner
         pub let x: Int
         pub let y: Int
         pub let width: Int
         pub let height: Int
 
-        pub init(of inner: &&Inner, x: Int, y: Int, width: Int, height: Int) 'inner {
+        pub init(of inner: &&Inner, x: Int, y: Int, width: Int, height: Int) &&'inner {
             self.inner = inner
             self.x = x
             self.y = y
@@ -217,13 +217,13 @@ static extend Plane {
 }
 
 extend Plane.Slice: MutablePlane where Inner: MutablePlane {
-    pub set(mut &self, _ color: Color, x: Int, y: Int) rethrows where mut(self.inner) {
+    pub set(mut &self, _ color: Color, x: Int, y: Int) rethrows {
         self.inner[x: x + self.x, y: y + self.y] = color
     }
 }
 
 extend Plane {
-    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) rethrows -> Slice<of: Self> 'self {
+    pub fun slice(&&self, x: Int, y: Int, width: Int, height: Int) rethrows -> &&'self Slice<of: Self> {
         .init(of: &&self, x: x, y: y, width: width, height: height)
     }
 }

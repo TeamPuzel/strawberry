@@ -66,37 +66,39 @@ namespace str {
       public:
         /// An erroneous token produced as provenance when the token stream throws a diagnostic.
         struct Error final {};
-        /// Encodes `\n`
+        /// Encodes `\n`.
         struct NewLine final {};
-        /// Encodes `(`
+        /// Encodes `(`.
         struct ParenLeft final {};
-        /// Encodes `)`
+        /// Encodes `)`.
         struct ParenRight final {};
-        /// Encodes `{`
+        /// Encodes `{`.
         struct BraceLeft final {};
-        /// Encodes `}`
+        /// Encodes `}`.
         struct BraceRight final {};
-        /// Encodes `[`
+        /// Encodes `[`.
         struct BracketLeft final {};
-        /// Encodes `]`
+        /// Encodes `]`.
         struct BracketRight final {};
-        /// Encodes `|`
+        /// Encodes `|`.
         struct Pipe final {};
-        /// Encodes `,`
+        /// Encodes `,`.
         struct Comma final {};
-        /// Encodes `:`
+        /// Encodes `:`.
         struct Colon final {};
-        /// Encodes `;`
+        /// Encodes `::`.
+        struct DoubleColon final {};
+        /// Encodes `;`.
         struct SemiColon final {};
-        /// Encodes `@`
+        /// Encodes `@`.
         struct At final {};
-        /// Encodes `#`
+        /// Encodes `#`.
         struct Pound final {};
-        /// Encodes `'`
+        /// Encodes `'`.
         struct Tick final {};
-        /// Encodes `.`
+        /// Encodes `.`.
         struct Dot final {};
-        /// Encodes `->`
+        /// Encodes `->`.
         struct Arrow final {};
 
         /// A semantic comment such as documentation.
@@ -123,15 +125,11 @@ namespace str {
         /// A pure identifier, used for a wide range of constructs including keywords.
         struct Identifier final {
             std::string_view content;
-            bool leading_whitespace;
-            bool trailing_whitespace;
         };
 
         /// A symbolic identifier, mainly used by operators except for `and` `or` and `not`.
         struct Symbolic final {
             std::string_view content;
-            bool leading_whitespace;
-            bool trailing_whitespace;
         };
 
         using Data = std::variant<
@@ -146,6 +144,7 @@ namespace str {
             Pipe,
             Comma,
             Colon,
+            DoubleColon,
             SemiColon,
             At,
             Pound,
@@ -166,6 +165,10 @@ namespace str {
         u32 count;
         u32 line;
         u32 column;
+
+        u32 indentation;
+        bool leading_whitespace;
+        bool trailing_whitespace;
 
         template <typename T> auto is() const -> bool {
             return std::holds_alternative<T>(data);
@@ -209,6 +212,9 @@ namespace str {
             u32 count,
             u32 line,
             u32 column,
+            u32 indentation,
+            bool leading_whitespace,
+            bool trailing_whitespace,
             Data data
         ) : data(data)
           , source(source)
@@ -216,6 +222,9 @@ namespace str {
           , count(count)
           , line(line)
           , column(column)
+          , indentation(indentation)
+          , leading_whitespace(leading_whitespace)
+          , trailing_whitespace(trailing_whitespace)
         {}
     };
 
@@ -367,6 +376,7 @@ template <> struct std::formatter<str::Token, char> {
             [&ctx] (Token::Pipe _)         { return std::format_to(ctx.out(), "Pipe");         },
             [&ctx] (Token::Comma _)        { return std::format_to(ctx.out(), "Comma");        },
             [&ctx] (Token::Colon _)        { return std::format_to(ctx.out(), "Colon");        },
+            [&ctx] (Token::DoubleColon _)  { return std::format_to(ctx.out(), "DoubleColon");  },
             [&ctx] (Token::SemiColon _)    { return std::format_to(ctx.out(), "SemiColon");    },
             [&ctx] (Token::At _)           { return std::format_to(ctx.out(), "At");           },
             [&ctx] (Token::Pound _)        { return std::format_to(ctx.out(), "Pound");        },
@@ -390,12 +400,7 @@ template <> struct std::formatter<str::Token, char> {
                 return std::format_to(ctx.out(), "Identifier(content: {})", tok.content);
             },
             [&ctx] (Token::Symbolic tok) {
-                return std::format_to(
-                    ctx.out(), "Symbolic(content: {}, leading: {}, trailing: {})",
-                    tok.content,
-                    tok.leading_whitespace,
-                    tok.trailing_whitespace
-                );
+                return std::format_to(ctx.out(), "Symbolic(content: {})", tok.content);
             }
         }, token.data);
     }
@@ -411,6 +416,7 @@ namespace str {
         u32 line = 1;
         u32 column = 1;
         u32 consumed_count = 0;
+        u32 indentation = 0;
         std::optional<Token> last_token;
         std::vector<Token> provenance_stack;
 
@@ -602,12 +608,23 @@ namespace str {
         /// This is the primary and only correct way to maintain state while yielding a new token from the stream
         /// safely, tokens shouldn't be created otherwise without reason.
         template <typename T, typename... Arg> [[nodiscard]] auto yield(Arg... arg) -> Token {
+            bool leading_whitespace = at(index - consumed_count - 1)
+                .transform([] (char c) { return c == ' ' or c == '\n'; })
+                .value_or(true);
+
+            bool trailing_whitespace = at(index)
+                .transform([] (char c) { return c == ' ' or c == '\n' or c == ',' or c == '>' or c == ')' or c == ']'; })
+                .value_or(true);
+
             auto token = Token(
                 source,
                 index - 1,
                 consumed_count,
                 line,
                 column - 1,
+                indentation,
+                leading_whitespace,
+                trailing_whitespace,
                 Token::Data(T(std::forward<Arg>(arg)...))
             );
 
@@ -685,7 +702,12 @@ namespace str {
                 while (not finished() and is(' ')) consume();
                 no_yield(); goto start;
             } else if (is('\n')) {
-                consume(); end_line(); return yield<Token::NewLine>();
+                consume(); end_line();
+
+                indentation = 0; usize i = index;
+                while (i < text.size() and at(i) == ' ') { indentation += 1; i += 1; }
+
+                return yield<Token::NewLine>();
             } else if (is('(')) {
                 consume(); return yield<Token::ParenLeft>();
             } else if (is(')')) {
@@ -702,6 +724,8 @@ namespace str {
                 consume(); return yield<Token::Pipe>();
             } else if (is(',')) {
                 consume(); return yield<Token::Comma>();
+            } else if (are("::")) {
+                consume(2); return yield<Token::DoubleColon>();
             } else if (is(':')) {
                 consume(); return yield<Token::Colon>();
             } else if (is(';')) {
@@ -819,43 +843,27 @@ namespace str {
             } else if (valid_symbolic_ident()) {
                 usize count = 0;
 
-                bool leading_whitespace = at(index - 1)
-                    .transform([] (char c) { return c == ' ' or c == '\n'; })
-                    .value_or(true);
-
                 do {
                     count += 1;
                     consume();
-                } while (not finished() and valid_symbolic_ident());
-
-                bool trailing_whitespace = at(index)
-                    .transform([] (char c) { return c == ' ' or c == '\n' or c == ',' or c == '>' or c == ')'; })
-                    .value_or(true);
+                } while (not finished() and valid_symbolic_ident() and not is('>'));
 
                 rewind(count);
                 auto content = take(count);
 
-                return yield<Token::Symbolic>(content, leading_whitespace, trailing_whitespace);
+                return yield<Token::Symbolic>(content);
             } else if (valid_pure_ident()) {
                 usize count = 0;
-
-                bool leading_whitespace = at(index - 1)
-                    .transform([] (char c) { return c == ' ' or c == '\n'; })
-                    .value_or(true);
 
                 do {
                     count += 1;
                     consume();
                 } while (not finished() and valid_pure_ident());
 
-                bool trailing_whitespace = at(index)
-                    .transform([] (char c) { return c == ' ' or c == '\n' or c == ',' or c == '>' or c == ')'; })
-                    .value_or(true);
-
                 rewind(count);
                 auto content = take(count);
 
-                return yield<Token::Identifier>(content, leading_whitespace, trailing_whitespace);
+                return yield<Token::Identifier>(content);
             } else {
                 throw Diagnostic::error(yield<Token::Error>(), std::format("unexpected character: {}", at()));
             }
@@ -1244,7 +1252,7 @@ namespace str {
 
 namespace str {
     constexpr usize GENERIC_PRECEDENCE = 7;
-    constexpr usize PREFIX_PRECEDENCE = 1000;
+    constexpr usize STRICT_PRECEDENCE = 1000;
 
     constexpr auto precedence(std::string_view pattern) -> usize {
         if (pattern == "=")   return 0; // Assignment. Not needed here? It is a right associative postfix expression.
@@ -1290,8 +1298,8 @@ namespace str {
             // except for operators that contain dots, such as range or concatenation operators which are
             // ideally written without whitespace on either side.
             [token] (Token::Symbolic symbolic) -> OperatorRole {
-                bool lead = symbolic.leading_whitespace;
-                bool trail = symbolic.trailing_whitespace;
+                bool lead = token.leading_whitespace;
+                bool trail = token.trailing_whitespace;
 
                 if (lead and trail)                 return OperatorRole::Infix;
                 if (lead and not trail)             return OperatorRole::Prefix;
@@ -1303,8 +1311,8 @@ namespace str {
             // We don't actually try resolve non infix pure identifier operators here,
             // the other roles are a fallback for prefix and postfix parsing instead.
             [token] (Token::Identifier identifier) -> OperatorRole {
-                bool lead = identifier.leading_whitespace;
-                bool trail = identifier.trailing_whitespace;
+                bool lead = token.leading_whitespace;
+                bool trail = token.trailing_whitespace;
 
                 if (lead and trail) return OperatorRole::Infix;
 
@@ -1454,6 +1462,11 @@ namespace str {
             {}
         };
 
+        struct Deref final {
+            ExprBox rhs;
+            explicit Deref(auto rhs) : rhs(box(rhs)) {}
+        };
+
         struct [[deprecated]] Projection final {
             enum class Kind { Mutating, Borrowing } kind;
             ExprBox expr;
@@ -1481,11 +1494,13 @@ namespace str {
         /// A mutable projection argument forward `foo(&bar)`.
         struct MutableForward final {
             ExprBox expr;
+            explicit MutableForward(auto expr) : expr(box(expr)) {}
         };
 
         /// A universal projection argument forward `foo(&&bar)`.
         struct UniversalForward final {
             ExprBox expr;
+            explicit UniversalForward(auto expr) : expr(box(expr)) {}
         };
 
         struct Intrinsic final {
@@ -1511,19 +1526,61 @@ namespace str {
         };
 
         struct Callable final {
-            ExprBox arguments;
-            std::optional<std::vector<ExprBox>> captures;
+            struct Argument final {
+                /// The convention by which the argument is being passed.
+                enum class Convention {
+                    /// The default argument convention `(arg: T) -> ()`.
+                    /// Represents a value we own.
+                    Consume,
+                    /// The borrowed argument convention `(arg: &T) -> ()`.
+                    /// Represents a value we do not own.
+                    BorrowedProjection,
+                    /// The mutable argument convention `(arg: mut &T) -> ()`.
+                    /// Represents a value we temporarily own but must return back.
+                    MutableProjection
+                };
+
+                /// The argument label.
+                std::optional<std::string_view> label;
+                /// The argument passing convention.
+                Convention convention;
+                /// The type expression.
+                ExprBox type_expr;
+            };
+
+            struct Capture final {
+                /// The convention by which the capture is being stored.
+                enum class Convention {
+                    /// The default argument convention `():[Int] -> ()`.
+                    /// Represents a value we own.
+                    Consume,
+                    /// The borrowed argument convention `():[&Int] -> ()`.
+                    /// Represents a value we do not own.
+                    BorrowedProjection,
+                    /// The mutable argument convention `():[mut &Int] -> ()`.
+                    /// Represents a value we temporarily own but must return back.
+                    MutableProjection
+                };
+
+                /// The capture convention.
+                Convention convention;
+                /// The type expression.
+                ExprBox type_expr;
+            };
+
+            std::vector<Argument> args;
+            std::optional<std::vector<Capture>> captures;
             bool async;
             std::optional<std::vector<ExprBox>> throws;
             ExprBox return_type;
 
             Callable(
-                auto arguments,
-                std::optional<std::vector<ExprBox>> captures,
+                std::vector<Argument> args,
+                std::optional<std::vector<Capture>> captures,
                 bool async,
                 std::optional<std::vector<ExprBox>> throws,
                 auto return_type
-            ) : arguments(box(arguments))
+            ) : args(std::move(args))
               , captures(std::move(captures))
               , async(async)
               , throws(std::move(throws))
@@ -1755,6 +1812,15 @@ namespace str {
             ExprBox expr;
 
             Member(std::string_view name, auto expr) : name(name), expr(box(expr)) {}
+        };
+
+        /// A member container projection expression `->`.
+        /// `<expr>.name`
+        struct MemberDeref final {
+            std::string_view name;
+            ExprBox expr;
+
+            MemberDeref(std::string_view name, auto expr) : name(name), expr(box(expr)) {}
         };
 
         /// A reflective meta member projection expression `::`.
@@ -2080,14 +2146,9 @@ namespace str {
                 : data(std::move(data)), rhs(std::move(rhs)), where_clause(std::move(where_clause)) {}
         };
 
-        /// A list of lifetime bindings.
-        /// `<expr> 'binding 'other`
-        ///
-        /// This is used to bind return types, and it is an expression rather than feature of the
-        /// function declaration because it needs to be precise `-> (Int, NonCopyable 'self)`
-        struct Lifetimes final {
-            std::vector<std::string_view> bindings;
-            explicit Lifetimes(std::vector<std::string_view> bindings) : bindings(std::move(bindings)) {}
+        struct Lifetime final {
+            std::string_view name;
+            explicit Lifetime(std::string_view name) : name(name) {}
         };
 
         /// A class initialization sugar expression.
@@ -2114,9 +2175,11 @@ namespace str {
         };
 
         using Data = std::variant<
+            Fold,
             Infix,
             Prefix,
             Postfix,
+            Deref,
             Wildcard,
             Number,
             String,
@@ -2141,6 +2204,7 @@ namespace str {
             Throw,
             Await,
             Member,
+            MemberDeref,
             MetaMember,
             If,
             Guard,
@@ -2160,7 +2224,7 @@ namespace str {
             DestructuringBinding,
             PatternBinding,
             Pattern,
-            Lifetimes,
+            Lifetime,
             New
         >;
 
@@ -2197,7 +2261,7 @@ namespace str {
     class Decl final {
       public:
         struct GenericParameter final {
-            enum class Kind { Value, Type, Category } kind;
+            enum class Kind { Value, Type, Category, Lifetime } kind;
             std::optional<std::string_view> label;
             std::string_view name;
             std::optional<Expr> type_expr;
@@ -2234,6 +2298,8 @@ namespace str {
             bool implicit;
             /// The argument passing convention.
             Convention convention;
+            /// The lifetime binding name of the argument's convention (if not consume).
+            std::optional<std::string_view> lifetime;
             /// The type expression.
             Expr type_expr;
             /// The default expression.
@@ -2267,6 +2333,12 @@ namespace str {
                 UniversalProjection
             };
 
+            struct ReturnType final {
+                enum class Convention { Value, BorrowedProjection, MutableProjection } convention;
+                std::optional<std::string_view> lifetime;
+                Expr expr;
+            };
+
             /// Determines if this is a deinitializing function. These are a form of `deinit` and are documented
             /// together with deinit declarations, but they share grammar with functions so they are implemented here.
             bool deinit;
@@ -2291,7 +2363,7 @@ namespace str {
             /// as such in the normal list for completeness and readability.
             bool rethrows;
             /// Return type of the function, or nothing which is implicitly the empty tuple.
-            std::optional<Expr> return_type;
+            std::optional<ReturnType> return_type;
             /// Constraints on the function declaration.
             std::optional<Expr> where;
             /// The body of the function, or none at all.
@@ -2328,7 +2400,7 @@ namespace str {
             bool rethrows;
             std::optional<Expr> where;
             /// The block expression body of the initializer.
-            Expr body;
+            std::optional<Expr> body;
         };
 
         /// The static initializer has a dedicated declaration node. It is documented together with the normal `init`.
@@ -2535,13 +2607,13 @@ namespace str {
         };
 
         struct Member final {
-            /// Projection types can use `mut?` to represent members mutable
-            /// conditionally depending on how the type was initialized.
-            /// This is only allowed for instance members of aggregate types.
-            bool conditionally_mutable;
             /// Determines if the member is mutable.
             /// This is only allowed for instance members of aggregate types.
             bool mut;
+            /// Determines if the member is potentially unowned.
+            bool ref;
+            /// The lifetime binding name.
+            std::optional<std::string_view> lifetime;
             /// The name of the member declaration.
             std::string_view name;
             /// The type expression, required for instance members.
@@ -2684,29 +2756,256 @@ namespace str {
     };
 }
 
-template <> struct std::formatter<str::Expr, char> {
+namespace str {
+    template <typename T> struct MultilineRange final {
+        T const& range;
+        constexpr explicit MultilineRange(T const& range) : range(range) {}
+    };
+}
+
+template <typename R> struct std::formatter<str::MultilineRange<R>, char> {
     constexpr auto parse(std::format_parse_context& ctx) {
         auto it = ctx.begin();
         if (it != ctx.end() and *it != '}') throw std::format_error("invalid format args for str::Expr");
         return it;
     }
 
-    constexpr auto format(str::Expr const& expr, std::format_context& ctx) const {
-        throw std::runtime_error("todo");
+    constexpr auto format(str::MultilineRange<R> const& wrapper, std::format_context& ctx) const {
+        auto out = ctx.out();
+
+        auto begin = std::ranges::begin(wrapper.range);
+        auto end = std::ranges::end(wrapper.range);
+
+        if (begin == end) return std::format_to(out, "[]");
+
+        out = std::format_to(out, "[\n");
+
+        for (auto it = begin; it != end; ++it) {
+            out = std::format_to(out, "  {},\n", *it);
+        }
+
+        return std::format_to(out, "]");
     }
 };
 
-template <> struct std::formatter<str::Decl, char> {
-    constexpr auto parse(std::format_parse_context& ctx) {
-        auto it = ctx.begin();
-        if (it != ctx.end() and *it != '}') throw std::format_error("invalid format args for str::Decl");
-        return it;
-    }
+// template <> struct std::formatter<str::Expr, char> {
+//     constexpr auto parse(std::format_parse_context& ctx) {
+//         auto it = ctx.begin();
+//         if (it != ctx.end() and *it != '}') throw std::format_error("invalid format args for str::Expr");
+//         return it;
+//     }
 
-    constexpr auto format(str::Decl const& decl, std::format_context& ctx) const {
-        throw std::runtime_error("todo");
-    }
-};
+//     constexpr auto format(str::Expr const& expr, std::format_context& ctx) const {
+//         throw std::runtime_error("todo");
+//         return ctx.out();
+//     }
+// };
+
+// template <> struct std::formatter<str::Decl, char> {
+//     constexpr auto parse(std::format_parse_context& ctx) {
+//         auto it = ctx.begin();
+//         if (it != ctx.end() and *it != '}') throw std::format_error("invalid format args for str::Decl");
+//         return it;
+//     }
+
+//     constexpr auto format(str::Decl const& decl, std::format_context& ctx) const {
+//         using namespace str;
+
+//         auto out = ctx.out();
+
+//         switch (decl.mod_visibility) {
+//             case str::Decl::Visibility::Pub:    out = std::format_to(out, "pub ");      break;
+//             case str::Decl::Visibility::PubGet: out = std::format_to(out, "pub(get) "); break;
+//             case str::Decl::Visibility::PubSet: out = std::format_to(out, "pub(set) "); break;
+//         }
+
+//         if (decl.mod_unsafe)   out = std::format_to(out, "unsafe ");
+//         if (decl.mod_open)     out = std::format_to(out, "open ");
+//         if (decl.mod_override) out = std::format_to(out, "override ");
+//         if (decl.mod_inherent) out = std::format_to(out, "inherent ");
+//         if (decl.mod_const)    out = std::format_to(out, "const ");
+//         if (decl.mod_static)   out = std::format_to(out, "static ");
+//         if (decl.mod_inline)   out = std::format_to(out, "inline ");
+//         if (decl.mod_implicit) out = std::format_to(out, "implicit ");
+//         if (decl.mod_final)    out = std::format_to(out, "final ");
+//         if (decl.mod_base)     out = std::format_to(out, "base ");
+
+//         return std::visit(overloaded {
+//             [&] (Decl::Fun const& decl) {
+//                 return std::format_to(out,
+//                     "Fun(\n"
+//                     " deinit: {},\n"
+//                     " operator: {},\n"
+//                     " accessor: {},\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " self: {},\n"
+//                     " args: {},\n"
+//                     " throws: {},\n"
+//                     " rethrows: {},\n"
+//                     " where: {},\n"
+//                     " body: {}\n"
+//                     ")",
+//                     decl.deinit
+//                 );
+//             },
+//             [&] (Decl::Init const& decl) {
+//                 return std::format_to(out,
+//                     "Init(\n"
+//                     " generics: {},\n"
+//                     " args: {},\n"
+//                     " lifetimes: {},\n"
+//                     " throws: {},\n"
+//                     " rethrows: {},\n"
+//                     " where: {},\n"
+//                     " body: {}\n"
+//                     ")"
+//                 );
+//             },
+//             [&] (Decl::StaticInit const& decl) {
+//                 return std::format_to(out,
+//                     "StaticInit(\n"
+//                     " body: {}\n"
+//                     ")",
+//                     decl.body
+//                 );
+//             },
+//             [&] (Decl::Deinit const& decl) {
+//                 return std::format_to(out,
+//                     "Deinit(\n"
+//                     " body: {}\n"
+//                     ")",
+//                     decl.body
+//                 );
+//             },
+//             [&] (Decl::Struct const& decl) {
+//                 return std::format_to(out,
+//                     "Struct(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")",
+//                     decl.name,
+//                     MultilineRange(decl.generics),
+//                     MultilineRange(decl.superlist),
+//                     decl.where,
+//                     MultilineRange(decl.decls)
+//                 );
+//             },
+//             [&] (Decl::Enum const& decl) {
+//                 return std::format_to(out,
+//                     "Enum(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {},\n"
+//                     " cases: {}\n"
+//                     ")",
+//                     decl.name,
+//                     decl.generics,
+//                     decl.superlist,
+//                     decl.where,
+//                     decl.decls,
+//                     decl.cases
+//                 );
+//             },
+//             [&] (Decl::Category const& decl) {
+//                 return std::format_to(out,
+//                     "Category(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")",
+//                     decl.name,
+//                     decl.generics,
+//                     decl.superlist,
+//                     decl.where,
+//                     decl.decls
+//                 );
+//             },
+//             [&] (Decl::Extend const& decl) {
+//                 return std::format_to(out,
+//                     "Extend(\n"
+//                     " path: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")",
+//                     std::string(decl.target_path),
+//                     decl.superlist,
+//                     decl.where,
+//                     decl.decls
+//                 );
+//             },
+//             [&] (Decl::TypeAlias const& decl) {
+//                 return std::format_to(out, "TypeAlias(name: {}, expr: {})", decl.name, decl.expr);
+//             },
+//             [&] (Decl::CategoryAlias const& decl) {
+//                 return std::format_to(out, "CategoryAlias(name: {}, expr: {})", decl.name, decl.expr);
+//             },
+//             [&] (Decl::TypeOperator const& decl) {
+//                 std::string_view kind; switch (decl.kind) {
+//                     case str::Decl::TypeOperator::Kind::Prefix:  kind = "Prefix";  break;
+//                     case str::Decl::TypeOperator::Kind::Postfix: kind = "Postfix"; break;
+//                 }
+
+//                 return std::format_to(out, "TypeOperator(name: {}, kind: {}, expr: {})", decl.name, kind, decl.expr);
+//             },
+//             [&] (Decl::DecayType const& decl) {
+//                 return std::format_to(out, "DecayType(expr: {})", decl.expr);
+//             },
+//             [&] (Decl::Class const& decl) {
+//                 return std::format_to(out,
+//                     "Class(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")",
+//                     decl.name,
+//                     decl.generics,
+//                     decl.superlist,
+//                     decl.where,
+//                     decl.decls
+//                 );
+//             },
+//             [&] (Decl::Member const& decl) {
+//                 return out;
+//             },
+//             [&] (Decl::Object const& decl) {
+//                 return std::format_to(out,
+//                     "Object(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")"
+//                 );
+//             },
+//             [&] (Decl::Annotation const& decl) {
+//                 return std::format_to(out,
+//                     "Annotation(\n"
+//                     " name: {},\n"
+//                     " generics: {},\n"
+//                     " superlist: {},\n"
+//                     " where: {},\n"
+//                     " decls: {}\n"
+//                     ")"
+//                 );
+//             },
+//             [&] (Decl::Import const& decl) {
+//                 return std::format_to(out, "Import(path: {})", std::string(decl.path));
+//             }
+//         }, decl.data);
+//     }
+// };
 
 namespace str {
     class Parser final {
@@ -2867,7 +3166,11 @@ namespace str {
         auto parse_prefix_expr(TokenStream& tokens) -> Expr {
             auto span = tokens.span();
 
-            if (tokens.match<Token::Pound>()) {
+            if (tokens.match<Token::Tick>()) {
+                std::string_view name = tokens.expect_as<Token::Identifier>().content;
+
+                return Expr(span.take(), Expr::Lifetime(name));
+            } else if (tokens.match<Token::Pound>()) {
                 std::optional<std::string_view> backend;
                 std::string_view name = tokens.expect_as<Token::Identifier>().content;
 
@@ -3133,11 +3436,10 @@ namespace str {
                 return Expr(span.take(), Expr::String(std::move(string)));
             }
 
+            // The parenthesized expression case.
             if (tokens.match<Token::ParenLeft>()) {
                 // The special case of an empty tuple.
-                if (tokens.match<Token::ParenRight>()) {
-                    return Expr(span.take(), Expr::Tuple());
-                }
+                if (tokens.match<Token::ParenRight>()) return Expr(span.take(), Expr::Tuple());
 
                 std::vector<Expr::Tuple::Element> elements;
                 bool is_tuple = false;
@@ -3154,13 +3456,21 @@ namespace str {
                         next_1 and next_1->is<Token::Identifier>() and
                         next_2 and next_2->is<Token::Colon>()
                     ) {
-                        label = tokens.expect_as<Token::Identifier>().content;
-                        tokens.expect<Token::Colon>();
+                        std::string_view content = next_1->get<Token::Identifier>().content;
 
-                        is_tuple = true;
+                        // Disambiguate labels from subtype expressions with this hack.
+                        // In the enforced Strawberry style types always start with an upper case character,
+                        // and other names or labels are always snake case instead.
+                        if (content.front() >= 'a' and content.front() <= 'z') {
+                            label = tokens.expect_as<Token::Identifier>().content;
+                            tokens.expect<Token::Colon>();
+                            is_tuple = true;
+                        }
                     }
 
-                    elements.emplace_back(label, Expr::box(parse_expr(tokens)));
+                    Expr element = parse_expr(tokens);
+
+                    elements.emplace_back(label, Expr::box(std::move(element)));
 
                     if (tokens.match<Token::Comma>()) {
                         is_tuple = true;
@@ -3268,11 +3578,11 @@ namespace str {
 
                     // In order to disambiguate elided parentheses we can use whitespace.
                     if (
-                        auto identifier = tokens.peek_match_as<Token::Identifier>();
+                        auto identifier = tokens.peek_match<Token::Identifier>();
                         identifier and identifier->trailing_whitespace
                     ) {
                         auto token = tokens.expect<Token::Identifier>();
-                        Expr annotation = Expr(token, Expr::Identifier(identifier->content));
+                        Expr annotation = Expr(token, Expr::Identifier(identifier->identifier_content().value()));
                         annotations.emplace_back(std::move(annotation), unsafe);
                     } else {
                         Expr annotation = parse_expr(tokens);
@@ -3285,11 +3595,22 @@ namespace str {
                 return Expr(span.take(), Expr::Annotations(std::move(annotations), std::move(expr)));
             }
 
-            if (auto symbolic = tokens.match_as<Token::Symbolic>([] (auto symbolic) {
-                return not symbolic.trailing_whitespace;
-            })) {
+            if (auto token = tokens.peek_match<Token::Symbolic>();
+                token and not token->trailing_whitespace and token->leading_whitespace
+            ) {
+                auto symbolic = tokens.expect_as<Token::Symbolic>();
+
                 auto rhs = parse_expr(tokens);
-                return Expr(span.take(), Expr::Prefix(symbolic->content, std::move(rhs)));
+
+                if (symbolic.content == "&") {
+                    return Expr(span.take(), Expr::MutableForward(std::move(rhs)));
+                } else if (symbolic.content == "&&") {
+                    return Expr(span.take(), Expr::UniversalForward(std::move(rhs)));
+                } else if (symbolic.content == "*") {
+                    return Expr(span.take(), Expr::Deref(std::move(rhs)));
+                } else {
+                    return Expr(span.take(), Expr::Prefix(symbolic.content, std::move(rhs)));
+                }
             }
 
             // The not identifier is the only allowed non symbolic prefix operator in order to
@@ -3311,17 +3632,7 @@ namespace str {
             while (true) {
                 if (tokens.finished()) break;
 
-                if (tokens.match<Token::Tick>()) {
-                    std::vector<std::string_view> lifetimes;
-
-                    do {
-                        lifetimes.emplace_back(tokens.expect_as<Token::Identifier>().content);
-                    } while (tokens.match<Token::Tick>());
-
-                    auto provenance = Provenance(lhs.provenance, tokens.last_provenance());
-
-                    lhs = Expr(provenance, Expr::Lifetimes(std::move(lifetimes)));
-                } else if (tokens.match<Token::ParenLeft>()) {
+                if (tokens.match<Token::ParenLeft>()) {
                     std::vector<Expr::Call::Argument> arguments;
 
                     if (not tokens.peek_match<Token::ParenRight>()) {
@@ -3355,17 +3666,31 @@ namespace str {
                     auto provenance = Provenance(lhs.provenance, Provenance(name_token));
 
                     lhs = Expr(provenance, Expr::Member(name, std::move(lhs)));
+                } else if (auto arrow = tokens.peek_match<Token::Arrow>();
+                    arrow and not arrow->leading_whitespace and not arrow->trailing_whitespace
+                ) {
+                    tokens.expect<Token::Arrow>();
+
+                    auto name_token = tokens.expect<Token::Identifier>();
+                    std::string_view name = name_token.get<Token::Identifier>().content;
+
+                    auto provenance = Provenance(lhs.provenance, Provenance(name_token));
+
+                    lhs = Expr(provenance, Expr::MemberDeref(name, std::move(lhs)));
+                } else if (tokens.match<Token::DoubleColon>()) {
+                    auto name_token = tokens.expect<Token::Identifier>();
+
+                    std::string_view name = name_token.get<Token::Identifier>().content;
+
+                    auto provenance = Provenance(lhs.provenance, Provenance(name_token));
+
+                    lhs = Expr(provenance, Expr::MetaMember(name, std::move(lhs)));
                 } else if (tokens.match<Token::Colon>()) {
-                    if (tokens.match<Token::Colon>()) {
-                        auto name_token = tokens.expect<Token::Identifier>();
-                        std::string_view name = name_token.get<Token::Identifier>().content;
+                    Expr rhs = parse_expr(tokens, STRICT_PRECEDENCE);
 
-                        auto provenance = Provenance(lhs.provenance, Provenance(name_token));
+                    auto provenance = Provenance(lhs.provenance, Provenance(lhs.provenance, rhs.provenance));
 
-                        lhs = Expr(provenance, Expr::MetaMember(name, std::move(lhs)));
-                    } else {
-
-                    }
+                    lhs = Expr(provenance, Expr::Subtype(std::move(lhs), std::move(rhs)));
                 } else if (tokens.match<Token::BracketLeft>()) {
                     std::vector<Expr::Subscript::Argument> arguments;
 
@@ -3460,7 +3785,7 @@ namespace str {
                                 tokens.expect<Token::Colon>();
                             }
 
-                            parameters.emplace_back(label, Expr::box(parse_expr(tokens)));
+                            parameters.emplace_back(label, Expr::box(parse_expr(tokens, ">")));
                         } while (tokens.match<Token::Comma>());
                     }
 
@@ -3490,9 +3815,11 @@ namespace str {
                         provenance,
                         Expr::TrailingClosure(std::move(lhs), std::move(closure))
                     );
-                } else if (auto symbolic = tokens.match<Token::Symbolic>([] (auto symbolic) {
-                    return not symbolic.leading_whitespace and symbolic.content != ">";
-                })) {
+                } else if (auto symbolic = tokens.peek_match<Token::Symbolic>([] (auto symbolic) { return symbolic.content != ">"; });
+                    symbolic and not symbolic->leading_whitespace and symbolic->trailing_whitespace
+                ) {
+                    tokens.expect<Token::Symbolic>();
+
                     auto provenance = Provenance(lhs.provenance, Provenance(*symbolic));
 
                     lhs = Expr(
@@ -3536,6 +3863,16 @@ namespace str {
                 if (prec < minimum_precedence) break;
 
                 tokens.drop();
+
+                // Infix conjunction fold.
+                if (auto token = tokens.match<Token::Symbolic>("...")) {
+                    Provenance provenance = Provenance(lhs.provenance, Provenance(*token));
+                    lhs = Expr(
+                        provenance,
+                        Expr::Fold(std::move(lhs), Expr::Fold::InfixConjunction(op->identifier_content().value()))
+                    );
+                    break;
+                }
 
                 Expr rhs = parse_expr(tokens, prec + 1);
 
@@ -3600,22 +3937,34 @@ namespace str {
                         tokens.expect<Token::Colon>();
                     }
 
-                    bool is_category = (bool) tokens.match<Token::Identifier>("category");
+                    if (tokens.match<Token::Tick>()) {
+                        std::string_view name = tokens.expect_as<Token::Identifier>().content;
 
-                    std::string_view name = tokens.expect_as<Token::Identifier>().content;
+                        parameters.push_back({
+                            .kind = Decl::GenericParameter::Kind::Lifetime,
+                            .label = label,
+                            .name = name,
+                            .type_expr = std::nullopt,
+                            .default_expr = std::nullopt
+                        });
+                    } else {
+                        bool is_category = (bool) tokens.match<Token::Identifier>("category");
 
-                    std::optional<Expr> default_expr;
-                    if (tokens.match<Token::Symbolic>("=")) default_expr = parse_expr(tokens, ">");
+                        std::string_view name = tokens.expect_as<Token::Identifier>().content;
 
-                    parameters.push_back({
-                        .kind = is_category
-                            ? Decl::GenericParameter::Kind::Category
-                            : Decl::GenericParameter::Kind::Type,
-                        .label = label,
-                        .name = name,
-                        .type_expr = std::nullopt,
-                        .default_expr = std::move(default_expr)
-                    });
+                        std::optional<Expr> default_expr;
+                        if (tokens.match<Token::Symbolic>("=")) default_expr = parse_expr(tokens, ">");
+
+                        parameters.push_back({
+                            .kind = is_category
+                                ? Decl::GenericParameter::Kind::Category
+                                : Decl::GenericParameter::Kind::Type,
+                            .label = label,
+                            .name = name,
+                            .type_expr = std::nullopt,
+                            .default_expr = std::move(default_expr)
+                        });
+                    }
                 }
             } while (tokens.match<Token::Comma>());
 
@@ -3646,6 +3995,7 @@ namespace str {
             if (tokens.match<Token::Identifier>("where")) {
                 tokens.allow<Token::NewLine>();
                 where = parse_expr(tokens);
+                tokens.allow<Token::NewLine>();
             }
 
             std::vector<Decl> decls;
@@ -3660,7 +4010,7 @@ namespace str {
                 tokens.expect<Token::BraceRight>();
             }
 
-            if (not tokens.finished()) tokens.expect<Token::NewLine>();
+            if (not tokens.finished()) tokens.allow<Token::NewLine>();
 
             return Decl(
                 span.take(),
@@ -3781,12 +4131,16 @@ namespace str {
                     if (not ref) fwd = (bool) tokens.match<Token::Symbolic>("&&");
 
                     Decl::Argument::Convention convention = Decl::Argument::Convention::Consume;
+                    std::optional<std::string_view> lifetime;
                     if (mut and ref) {
                         convention = Decl::Argument::Convention::MutableProjection;
+                        if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                     } else if (ref) {
                         convention = Decl::Argument::Convention::BorrowedProjection;
+                        if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                     } else if (fwd) {
                         convention = Decl::Argument::Convention::UniversalProjection;
+                        if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                     } else if (mut) {
                         throw Diagnostic::error(tokens.last_provenance(), "mut convention is not a feature");
                     }
@@ -3801,6 +4155,7 @@ namespace str {
                         .name = name,
                         .implicit = implicit,
                         .convention = convention,
+                        .lifetime = lifetime,
                         .type_expr = std::move(type_expr),
                         .default_expr = std::move(default_expr)
                     });
@@ -3819,16 +4174,32 @@ namespace str {
 
             bool rethrows = (bool) tokens.match<Token::Identifier>("rethrows");
 
-            std::optional<Expr> return_type;
-            if (tokens.match<Token::Arrow>()) return_type = parse_expr(tokens);
+            std::optional<Decl::Fun::ReturnType> return_type;
+            if (tokens.match<Token::Arrow>()) {
+                Decl::Fun::ReturnType::Convention convention = Decl::Fun::ReturnType::Convention::Value;
+                std::optional<std::string_view> lifetime;
+
+                if (tokens.match<Token::Identifier>("mut")) {
+                    tokens.expect<Token::Symbolic>("&");
+                    if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
+                } else if (tokens.match<Token::Symbolic>("&")) {
+                    if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
+                }
+
+                Expr expr = parse_expr(tokens);
+
+                return_type = Decl::Fun::ReturnType {
+                    .convention = convention,
+                    .lifetime = lifetime,
+                    .expr = std::move(expr)
+                };
+            }
 
             std::optional<Expr> where;
             if (tokens.match<Token::Identifier>("where")) where = parse_expr(tokens);
 
             std::optional<Expr> body;
-            if (tokens.peek_match<Token::BraceLeft>()) {
-                body = parse_block_expr(tokens);
-            }
+            if (tokens.peek_match<Token::BraceLeft>()) body = parse_block_expr(tokens);
 
             return Decl(
                 span.take(),
@@ -3884,12 +4255,16 @@ namespace str {
                         if (not ref) fwd = (bool) tokens.match<Token::Symbolic>("&&");
 
                         Decl::Argument::Convention convention = Decl::Argument::Convention::Consume;
+                        std::optional<std::string_view> lifetime;
                         if (mut and ref) {
                             convention = Decl::Argument::Convention::MutableProjection;
+                            if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                         } else if (ref) {
                             convention = Decl::Argument::Convention::BorrowedProjection;
+                            if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                         } else if (fwd) {
                             convention = Decl::Argument::Convention::UniversalProjection;
+                            if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
                         } else if (mut) {
                             throw Diagnostic::error(tokens.last_provenance(), "mut convention is not a feature");
                         }
@@ -3904,6 +4279,7 @@ namespace str {
                             .name = name,
                             .implicit = implicit,
                             .convention = convention,
+                            .lifetime = lifetime,
                             .type_expr = std::move(type_expr),
                             .default_expr = std::move(default_expr)
                         });
@@ -3931,7 +4307,8 @@ namespace str {
                 std::optional<Expr> where;
                 if (tokens.match<Token::Identifier>("where")) where = parse_expr(tokens);
 
-                Expr body = parse_block_expr(tokens);
+                std::optional<Expr> body;
+                if (tokens.peek_match<Token::BraceLeft>()) body = parse_block_expr(tokens);
 
                 return Decl(
                     span.take(),
@@ -4177,6 +4554,8 @@ namespace str {
             tokens.expect<Token::Identifier>("decay");
             tokens.expect<Token::Identifier>("type");
 
+            tokens.expect<Token::Symbolic>("=");
+
             Expr expr = parse_expr(tokens);
 
             tokens.expect<Token::NewLine>();
@@ -4197,13 +4576,11 @@ namespace str {
             auto span = tokens.span();
             tokens.expect<Token::Identifier>("let");
 
-            bool conditionally_mutable = false;
-            bool mut = false;
+            bool mut = (bool) tokens.match<Token::Identifier>("mut");
+            bool ref = (bool) tokens.match<Token::Symbolic>("&");
 
-            if (tokens.match<Token::Identifier>("mut")) {
-                mut = true;
-                if (tokens.match<Token::Symbolic>("?")) conditionally_mutable = true;
-            }
+            std::optional<std::string_view> lifetime;
+            if (tokens.match<Token::Tick>()) lifetime = tokens.expect_as<Token::Identifier>().content;
 
             std::string_view name = tokens.expect_as<Token::Identifier>().content;
 
@@ -4218,8 +4595,9 @@ namespace str {
             return Decl(
                 span.take(),
                 Decl::Member {
-                    .conditionally_mutable = conditionally_mutable,
                     .mut = mut,
+                    .ref = ref,
+                    .lifetime = lifetime,
                     .name = name,
                     .type_expr = std::move(type_expr),
                     .default_expr = std::move(default_expr)
@@ -4385,6 +4763,7 @@ namespace str {
 
         while (not tokens.finished()) {
             tokens.drop_while(&Token::is<Token::NewLine>);
+            if (tokens.finished()) break;
             decls.emplace_back(parser.parse_decl(tokens));
         }
 

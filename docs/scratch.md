@@ -976,7 +976,7 @@ Because the binding itself looks somewhat unassuming the mutability modifier is 
 pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
     pub(get) let mut? string: String<in: Allocator>
 
-    pub init(from string: String<in: Allocator>) 'string throws String.NotAscii {
+    pub init(from string: &&String<in: Allocator>) 'string throws String.NotAscii {
         if not string.is_ascii() then throw String.NotAscii
         self.string = string
     }

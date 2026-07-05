@@ -2,11 +2,11 @@ module core
 
 import core.memory
 
-pub struct List<of: Element, allocator: A = DefaultAllocator> where A: Allocator {
+pub struct List<of: Element, allocator: Allocator = DefaultAllocator> where Allocator: core.memory.Allocator {
     pub(get) let mut data: Pointer<to: Element>
     pub(get) let mut count: UInt
     pub(get) let mut capacity: UInt
-    pub(get) let mut allocator: A
+    pub(get) let mut allocator: Allocator
 }
 
 pub struct Array<of: Element, let count: Integer> where Integer >= 0 {

@@ -28,7 +28,7 @@ pub struct String<in: Allocator = DefaultAllocator>: StringLike where Allocator:
         self.bytes = bytes.flatten(in: allocator)
     }
 
-    pub init(from bytes: &SizedCollection<of: UInt<8>) where Allocator: Defaultable {
+    pub init(from bytes: &SizedCollection<of: UInt<8>>) where Allocator: Defaultable {
         self.bytes = bytes.flatten()
     }
 
@@ -37,20 +37,12 @@ pub struct String<in: Allocator = DefaultAllocator>: StringLike where Allocator:
         self.bytes = bytes
     }
 
-    pub fun to_ascii(self) throws NotAscii -> AsciiString<in: Allocator> {
-        .init(from: self)
+    pub fun ascii(&&self) throws NotAscii -> AsciiString<'self, in: Allocator> {
+        .init(of: &&self)
     }
 
-    pub fun as_ascii(&self) throws NotAscii -> AsciiString<in: Allocator> 'self {
-        .init(borrowing: self)
-    }
-
-    pub fun as_mut_ascii(mut &self) throws NotAscii -> AsciiString<in: Allocator> 'self {
-        .init(mutating: &self)
-    }
-
-    pub fun to_unicode(self) -> UnicodeString<in: Allocator> {
-        .init(from: self)
+    pub fun unicode(&&self) -> UnicodeString<'self, in: Allocator> {
+        .init(of: &&self)
     }
 }
 
@@ -84,10 +76,10 @@ static extend String {
 /// ASCII is very limited, but that is sometimes desirable, and always very efficient to work with.
 ///
 /// Ensures a null terminator past the end for interoperability.
-pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
-    pub(get) let mut? string: String<in: Allocator>
+pub struct AsciiString<'s, in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
+    pub(get) let mut &'s string: String<in: Allocator>
 
-    pub init(of string: &&String<in: Allocator>) 'string throws String.NotAscii {
+    pub init(of string: &&'s String<in: Allocator>) throws String.NotAscii {
         if not string.is_ascii() then throw String.NotAscii
         self.string = string
     }
@@ -96,7 +88,7 @@ pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Alloc
         unsafe self.string.get(at: index)
     }
 
-    pub set(mut &self, _ value: String.Char, at index: UInt) where mut(self.string) {
+    pub set(mut &self, _ value: String.Char, at index: UInt) {
         unsafe self.string.set(value, at: index)
     }
 }
@@ -119,11 +111,11 @@ pub struct AsciiString<in: Allocator = DefaultAllocator>: StringLike where Alloc
 /// a sizeable amount of constant data to boot.
 ///
 /// Ensures a null terminator past the end for interoperability.
-pub struct UnicodeString<in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
-    pub(get) let mut string: String<in: Allocator>
+pub struct UnicodeString<'s, in: Allocator = DefaultAllocator>: StringLike where Allocator: core.memory.Allocator {
+    pub(get) let mut &'s string: String<in: Allocator>
 
     /// The conversion is implicit because this is just a semantic change.
-    pub implicit init(from string: String<in: Allocator>) {
+    pub implicit init(of string: &&'s String<in: Allocator>) {
         self.string = string
     }
 }

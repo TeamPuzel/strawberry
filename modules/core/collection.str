@@ -1,7 +1,7 @@
 module core
 
 pub category Collection<of: Element, index: Index = UInt> {
-    get(&self, _ index: &Index) -> Element 'self
+    get(&self, _ index: &Index) -> &'self Element
 }
 
 pub category MutableCollection<of: Element, index: Index = UInt>: Collection<of: Element, index: Index> {

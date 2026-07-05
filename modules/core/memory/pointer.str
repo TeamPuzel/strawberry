@@ -58,7 +58,7 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
     }
 
     /// The container projection operator `let x = self->member`.
-    pub unsafe get(self) -> Pointee 'self {
+    pub unsafe get(self) -> &'static Pointee {
         #pointer_get(self.value)
     }
 
@@ -73,7 +73,7 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
     }
 
     /// The container projection operator `let x = self[index]`.
-    pub unsafe get(self, _ index: UInt) -> Pointee 'self {
+    pub unsafe get(self, _ index: UInt) -> &'static Pointee {
         #pointer_get_at(self.value, index.value)
     }
 
@@ -98,7 +98,7 @@ pub struct Pointer<to: Pointee>: unsafe Copyable {
     }
 
     /// The container projection operator with volatile semantics `let x = self[volatile: index]`.
-    pub unsafe get(self, volatile index: UInt) -> Pointee 'self {
+    pub unsafe get(self, volatile index: UInt) -> &'static Pointee {
         #pointer_volatile_get_at(self.value, index.value)
     }
 

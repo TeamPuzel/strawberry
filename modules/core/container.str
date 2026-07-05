@@ -27,7 +27,7 @@ where
     }
 
     /// Allows reading the inner type.
-    pub get(&self) -> Inner 'self {
+    pub get(&self) -> &'self Inner {
         unsafe self.raw.get()
     }
 
